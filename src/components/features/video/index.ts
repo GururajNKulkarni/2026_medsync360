@@ -1,0 +1,1 @@
+export { MedSyncVideo } from './MedSyncVideo';

@@ -1,0 +1,262 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Source+Sans+Pro:wght@300;400;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Dark mode styles */
+.dark {
+  color-scheme: dark;
+}
+
+@layer base {
+  body {
+    font-family: 'Inter', system-ui, sans-serif;
+    font-feature-settings: 'cv11', 'ss01';
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  
+  * {
+    @apply border-border;
+  }
+  
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+@layer components {
+  .medical-focus {
+    @apply ring-2 ring-medical-500 ring-offset-2;
+  }
+  
+  .primary-focus {
+    @apply ring-2 ring-primary-500 ring-offset-2;
+  }
+  
+  .card-hover {
+    @apply hover:shadow-lg hover:-translate-y-1 transition-all duration-200;
+  }
+  
+  .btn-medical {
+    @apply bg-medical-600 text-white hover:bg-medical-700 focus:ring-medical-500 active:bg-medical-800;
+  }
+  
+  .text-medical {
+    @apply text-medical-600;
+  }
+  
+  .bg-medical {
+    @apply bg-medical-50;
+  }
+  
+  .border-medical {
+    @apply border-medical-200;
+  }
+  
+  /* Touch-friendly components */
+  .touch-target {
+    @apply min-h-[44px] min-w-[44px];
+  }
+  
+  /* Responsive text utilities */
+  .text-responsive {
+    @apply text-sm md:text-base lg:text-lg;
+  }
+  
+  .heading-responsive {
+    @apply text-xl md:text-2xl lg:text-3xl xl:text-4xl;
+  }
+  
+  /* Responsive spacing utilities */
+  .spacing-responsive {
+    @apply p-4 md:p-6 lg:p-8;
+  }
+  
+  .margin-responsive {
+    @apply m-2 md:m-4 lg:m-6;
+  }
+  
+  /* Line clamp utilities */
+  .line-clamp-1 {
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 1;
+  }
+  
+  .line-clamp-2 {
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+  }
+  
+  .line-clamp-3 {
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 3;
+  }
+  
+  /* Scrollbar hide utility */
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+  
+  /* Custom scrollbar styles */
+  .scrollbar-thin {
+    scrollbar-width: thin;
+  }
+  
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 6px;
+  }
+  
+  .scrollbar-thin::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    background-color: var(--scrollbar-thumb, #d1d5db);
+    border-radius: 3px;
+  }
+  
+  .scrollbar-thumb-gray-300::-webkit-scrollbar-thumb {
+    --scrollbar-thumb: #d1d5db;
+  }
+  
+  .scrollbar-thumb-blue-300::-webkit-scrollbar-thumb {
+    --scrollbar-thumb: #93c5fd;
+  }
+  
+  .scrollbar-track-transparent::-webkit-scrollbar-track {
+    background: transparent;
+  }
+}
+
+@layer utilities {
+  .animation-delay-200 {
+    animation-delay: 200ms;
+  }
+  
+  .animation-delay-400 {
+    animation-delay: 400ms;
+  }
+  
+  .animation-delay-600 {
+    animation-delay: 600ms;
+  }
+  
+  .text-shadow {
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+  }
+  
+  .glass-effect {
+    backdrop-filter: blur(10px);
+    background-color: rgba(255, 255, 255, 0.8);
+  }
+  
+  /* Safe area for mobile devices */
+  .pb-safe {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  
+  .pt-safe {
+    padding-top: env(safe-area-inset-top);
+  }
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #c1c1c1;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #a8a8a8;
+}
+
+/* Focus styles for accessibility */
+.focus-visible:focus {
+  outline: 2px solid #3b82f6;
+  outline-offset: 2px;
+}
+
+/* Print styles for medical documents */
+@media print {
+  .no-print {
+    display: none !important;
+  }
+  
+  .print-break {
+    page-break-after: always;
+  }
+  
+  .print-avoid-break {
+    page-break-inside: avoid;
+  }
+}
+
+/* Mobile touch improvements */
+@media (hover: none) {
+  .hover\:bg-primary-50:hover,
+  .hover\:bg-neutral-50:hover,
+  .hover\:bg-gray-50:hover {
+    background-color: transparent;
+  }
+  
+  .hover\:shadow-lg:hover {
+    box-shadow: none;
+  }
+  
+  /* Ensure touch targets are properly sized */
+  button, 
+  a, 
+  input[type="button"], 
+  input[type="submit"] {
+    min-height: 44px;
+  }
+  
+  /* Improve touch scrolling */
+  .overflow-x-auto {
+    -webkit-overflow-scrolling: touch;
+  }
+}
+
+/* High contrast mode support */
+@media (prefers-contrast: high) {
+  .card {
+    border-width: 2px;
+  }
+  
+  .btn {
+    border-width: 2px;
+  }
+}
+
+/* Reduced motion support */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
