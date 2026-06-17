@@ -50,7 +50,6 @@ export const SwapDutyModal: React.FC<SwapDutyModalProps> = ({
   const [users, setUsers] = useState<User[]>([]);
   const [userDuties, setUserDuties] = useState<Duty[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedDepartment, setSelectedDepartment] = useState('');
   const [loading, setLoading] = useState(false);
 
   // Reset state when component mounts
@@ -60,26 +59,23 @@ export const SwapDutyModal: React.FC<SwapDutyModalProps> = ({
     setSelectedUser(null);
     setSelectedDuty(null);
     setSearchQuery('');
-    setSelectedDepartment('');
   }, []);
 
-  // Load users when needed
+  // Load users when needed.
+  // Duty swaps are restricted to active doctors within the same department.
   const loadUsers = async () => {
     try {
       setLoading(true);
-      let query = supabase
+      const { data, error } = await supabase
         .from('users')
         .select('id, full_name, role, department')
         .neq('id', duty?.user_id)
-        .eq('is_active', true);
+        .eq('is_active', true)
+        .eq('department', duty?.department ?? '')
+        .order('full_name', { ascending: true });
 
-      if (selectedDepartment) {
-        query = query.eq('department', selectedDepartment);
-      }
-
-      const { data, error } = await query;
       if (error) throw error;
-      
+
       setUsers(data || []);
     } catch (error) {
       console.error('Error loading users:', error);
@@ -116,7 +112,7 @@ export const SwapDutyModal: React.FC<SwapDutyModalProps> = ({
     if (currentStep === 'doctor') {
       loadUsers();
     }
-  }, [currentStep, selectedDepartment]);
+  }, [currentStep]);
 
   useEffect(() => {
     if (selectedUser && swapType === 'direct') {
@@ -311,30 +307,23 @@ export const SwapDutyModal: React.FC<SwapDutyModalProps> = ({
               className="space-y-4"
             >
               <h3 className="text-lg font-semibold text-neutral-900">Select Doctor</h3>
-              
-              {/* Filters */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-neutral-400" />
-                  <input
-                    type="text"
-                    placeholder="Search doctors..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="w-full pl-10 pr-4 py-2 border border-neutral-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-                  />
-                </div>
-                
-                <select
-                  value={selectedDepartment}
-                  onChange={(e) => setSelectedDepartment(e.target.value)}
-                  className="w-full px-4 py-2 border border-neutral-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-                >
-                  <option value="">All Departments</option>
-                  {departments.map(dept => (
-                    <option key={dept} value={dept}>{dept}</option>
-                  ))}
-                </select>
+
+              {/* Swaps are restricted to the same department */}
+              <div className="flex items-center text-sm text-neutral-600">
+                <Building2 className="w-4 h-4 mr-1.5 text-neutral-400" />
+                Showing doctors in <span className="font-medium text-neutral-900 mx-1">{duty.department}</span>
+              </div>
+
+              {/* Search */}
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-neutral-400" />
+                <input
+                  type="text"
+                  placeholder="Search doctors..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full pl-10 pr-4 py-2 border border-neutral-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                />
               </div>
 
               {/* Doctor List */}

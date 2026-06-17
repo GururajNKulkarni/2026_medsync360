@@ -52,12 +52,17 @@ interface ReferralFormData {
   age: string;
   sex: 'Male' | 'Female' | 'Other';
   admissionDate: string;
+  patientAdmissionTime: string;
+  roomNo: string;
+  patientIpNo: string;
   chiefComplaint: string;
+  pastHistory: string;
+  generalExamination: string;
+  medicationGiven: string;
   urgency: UrgencyLevel;
   department: string;
   doctor: string;
   attachments: File[];
-  medicationGiven: string;
 }
 
 interface ReferralFormProps {
@@ -70,6 +75,18 @@ interface Doctor {
   full_name: string;
   role: string;
   kmc_number: string | null;
+}
+
+function formatTimeAMPM(time: string): string {
+  if (!time) return '';
+  if (/am|pm/i.test(time)) return time;
+  const [hStr, mStr] = time.split(':');
+  const h = parseInt(hStr, 10);
+  const m = parseInt(mStr, 10);
+  if (isNaN(h) || isNaN(m)) return time;
+  const period = h < 12 ? 'AM' : 'PM';
+  const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h;
+  return `${h12}:${String(m).padStart(2, '0')} ${period}`;
 }
 
 const urgencyOptions = [
@@ -113,7 +130,12 @@ export const ReferralForm: React.FC<ReferralFormProps> = ({ onSubmit, onCancel }
     age: '',
     sex: 'Male',
     admissionDate: '',
+    patientAdmissionTime: '',
+    roomNo: '',
+    patientIpNo: '',
     chiefComplaint: '',
+    pastHistory: '',
+    generalExamination: '',
     medicationGiven: '',
     urgency: 'Normal',
     department: '',
@@ -130,6 +152,8 @@ export const ReferralForm: React.FC<ReferralFormProps> = ({ onSubmit, onCancel }
 
   // Fetch doctors when department changes
   useEffect(() => {
+    let cancelled = false;
+
     const fetchDoctors = async () => {
       if (!formData.department) {
         setDoctors([]);
@@ -145,24 +169,27 @@ export const ReferralForm: React.FC<ReferralFormProps> = ({ onSubmit, onCancel }
           .eq('is_active', true)
           .order('full_name', { ascending: true });
 
+        if (cancelled) return;
+
         if (error) {
           console.error('Error fetching doctors:', error);
           toast.error('Failed to load doctors for this department');
           setDoctors([]);
         } else {
           setDoctors(data || []);
-          console.log(`Found ${data?.length || 0} doctors in ${formData.department}`);
         }
       } catch (error) {
+        if (cancelled) return;
         console.error('Error fetching doctors:', error);
         toast.error('Failed to load doctors');
         setDoctors([]);
       } finally {
-        setLoadingDoctors(false);
+        if (!cancelled) setLoadingDoctors(false);
       }
     };
 
     fetchDoctors();
+    return () => { cancelled = true; };
   }, [formData.department]);
 
   // Reset doctor selection when department changes
@@ -198,11 +225,29 @@ export const ReferralForm: React.FC<ReferralFormProps> = ({ onSubmit, onCancel }
       }
     }
 
+    if (!formData.roomNo?.trim()) {
+      newErrors.roomNo = 'Room number is required';
+    }
+
+    if (!formData.patientIpNo?.trim()) {
+      newErrors.patientIpNo = 'Patient IP number is required';
+    }
+
     if (!formData.chiefComplaint?.trim()) {
       newErrors.chiefComplaint = 'Chief complaint is required';
     }
 
-    // Medication Given is optional – no validation for now
+    if (!formData.pastHistory?.trim()) {
+      newErrors.pastHistory = 'Past history is required';
+    }
+
+    if (!formData.generalExamination?.trim()) {
+      newErrors.generalExamination = 'General examination is required';
+    }
+
+    if (!formData.medicationGiven?.trim()) {
+      newErrors.medicationGiven = 'Medication given is required';
+    }
 
     if (!formData.department) {
       newErrors.department = 'Department is required';
@@ -291,7 +336,12 @@ export const ReferralForm: React.FC<ReferralFormProps> = ({ onSubmit, onCancel }
         age: parseInt(formData.age),
         sex: formData.sex,
         admissionDate: formData.admissionDate,
+        patientAdmissionTime: formData.patientAdmissionTime,
+        roomNo: formData.roomNo,
+        patientIpNo: formData.patientIpNo,
         chiefComplaint: formData.chiefComplaint,
+        pastHistory: formData.pastHistory,
+        generalExamination: formData.generalExamination,
         medicationGiven: formData.medicationGiven,
         urgency: formData.urgency,
         department: formData.department,
@@ -313,7 +363,12 @@ export const ReferralForm: React.FC<ReferralFormProps> = ({ onSubmit, onCancel }
         age: '',
         sex: 'Male',
         admissionDate: '',
+        patientAdmissionTime: '',
+        roomNo: '',
+        patientIpNo: '',
         chiefComplaint: '',
+        pastHistory: '',
+        generalExamination: '',
         medicationGiven: '',
         urgency: 'Normal',
         department: '',
@@ -408,7 +463,7 @@ export const ReferralForm: React.FC<ReferralFormProps> = ({ onSubmit, onCancel }
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {/* Sex */}
           <div>
             <label className="block text-sm font-medium text-neutral-700 mb-2">
@@ -443,10 +498,72 @@ export const ReferralForm: React.FC<ReferralFormProps> = ({ onSubmit, onCancel }
               <p className="text-xs text-red-600 mt-1">{errors.admissionDate}</p>
             )}
           </div>
+
+          {/* Patient Admission Time */}
+          <div>
+            <label className="block text-sm font-medium text-neutral-700 mb-2">
+              Admission Time <span className="text-neutral-500">(Optional)</span>
+            </label>
+            <div className="flex items-center gap-2">
+              <input
+                type="time"
+                value={formData.patientAdmissionTime}
+                onChange={(e) => setFormData(prev => ({ ...prev, patientAdmissionTime: e.target.value }))}
+                className="flex-1 px-4 py-3 border border-neutral-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-colors"
+              />
+              {formData.patientAdmissionTime && (
+                <span className="text-sm font-semibold text-primary-700 bg-primary-50 border border-primary-200 px-3 py-2 rounded-lg whitespace-nowrap">
+                  {formatTimeAMPM(formData.patientAdmissionTime)}
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* Room No */}
+          <div>
+            <label className="block text-sm font-medium text-neutral-700 mb-2">
+              Room No <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="text"
+              value={formData.roomNo}
+              onChange={(e) => setFormData(prev => ({ ...prev, roomNo: e.target.value }))}
+              className={cn(
+                "w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-colors",
+                errors.roomNo ? 'border-red-300' : 'border-neutral-300'
+              )}
+              placeholder="Enter room number"
+            />
+            {errors.roomNo && (
+              <p className="text-xs text-red-600 mt-1">{errors.roomNo}</p>
+            )}
+          </div>
+
+          {/* Patient IP No */}
+          <div>
+            <label className="block text-sm font-medium text-neutral-700 mb-2">
+              Patient IP No <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="text"
+              value={formData.patientIpNo}
+              onChange={(e) => setFormData(prev => ({ ...prev, patientIpNo: e.target.value }))}
+              className={cn(
+                "w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-colors",
+                errors.patientIpNo ? 'border-red-300' : 'border-neutral-300'
+              )}
+              placeholder="Enter patient IP number"
+            />
+            {errors.patientIpNo && (
+              <p className="text-xs text-red-600 mt-1">{errors.patientIpNo}</p>
+            )}
+          </div>
         </div>
       </div>
 
-      {/* Chief Complaint & Medication */}
+      {/* Chief Complaint */}
       <div>
         <label className="block text-sm font-medium text-neutral-700 mb-2">
           Chief Complaint <span className="text-red-500">*</span>
@@ -466,10 +583,50 @@ export const ReferralForm: React.FC<ReferralFormProps> = ({ onSubmit, onCancel }
         )}
       </div>
 
+      {/* Past History */}
+      <div>
+        <label className="block text-sm font-medium text-neutral-700 mb-2">
+          Past History <span className="text-red-500">*</span>
+        </label>
+        <textarea
+          value={formData.pastHistory}
+          onChange={(e) => setFormData(prev => ({ ...prev, pastHistory: e.target.value }))}
+          rows={3}
+          className={cn(
+            "w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-colors resize-none",
+            errors.pastHistory ? 'border-red-300' : 'border-neutral-300'
+          )}
+          placeholder="Enter patient's medical past history..."
+        />
+        {errors.pastHistory && (
+          <p className="text-xs text-red-600 mt-1">{errors.pastHistory}</p>
+        )}
+      </div>
+
+      {/* General Examination */}
+      <div>
+        <label className="block text-sm font-medium text-neutral-700 mb-2">
+          General Examination <span className="text-red-500">*</span>
+        </label>
+        <textarea
+          value={formData.generalExamination}
+          onChange={(e) => setFormData(prev => ({ ...prev, generalExamination: e.target.value }))}
+          rows={3}
+          className={cn(
+            "w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-colors resize-none",
+            errors.generalExamination ? 'border-red-300' : 'border-neutral-300'
+          )}
+          placeholder="Enter general examination findings..."
+        />
+        {errors.generalExamination && (
+          <p className="text-xs text-red-600 mt-1">{errors.generalExamination}</p>
+        )}
+      </div>
+
       {/* Medication Given */}
       <div>
         <label className="block text-sm font-medium text-neutral-700 mb-2">
-          Medication Given (optional)
+          Medication Given <span className="text-red-500">*</span>
         </label>
         <textarea
           value={formData.medicationGiven}

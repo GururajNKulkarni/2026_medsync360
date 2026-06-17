@@ -208,8 +208,57 @@ const swapDuties = async (swapRequest: DutySwapRequest) => {
         throw new Error(`Assignment failed: ${error.message}`);
       }
     }
-  } catch (error) { 
+
+    // Notify the other doctor (best-effort — never block the swap itself).
+    await notifyDutySwap(swapRequest);
+  } catch (error) {
     throw error;
+  }
+};
+
+// Sends an in-app notification to the doctor affected by a swap/assignment.
+// The recipient ends up holding the original duty in both flows.
+const notifyDutySwap = async (swapRequest: DutySwapRequest) => {
+  try {
+    const { data: auth } = await supabase.auth.getUser();
+    const actorId = auth?.user?.id ?? null;
+
+    let actorName = 'A colleague';
+    if (actorId) {
+      const { data: actor } = await supabase
+        .from('users')
+        .select('full_name')
+        .eq('id', actorId)
+        .single();
+      if (actor?.full_name) actorName = actor.full_name;
+    }
+
+    const { data: duty } = await supabase
+      .from('duty_roster')
+      .select('shift_date, shift_type')
+      .eq('id', swapRequest.originalDutyId)
+      .single();
+
+    const when = duty
+      ? `${format(new Date(duty.shift_date), 'EEE, MMM d')} (${duty.shift_type})`
+      : 'a duty';
+
+    const message =
+      swapRequest.swapType === 'direct'
+        ? `${actorName} swapped duties with you. You are now assigned ${when}.`
+        : `${actorName} assigned their ${when} duty to you.`;
+
+    await supabase.from('duty_notifications').insert({
+      recipient_id: swapRequest.targetUserId,
+      actor_id: actorId,
+      duty_id: swapRequest.originalDutyId,
+      type: swapRequest.swapType === 'direct' ? 'duty_swap' : 'duty_assignment',
+      title: swapRequest.swapType === 'direct' ? 'Duty Swap' : 'Duty Assignment',
+      message,
+    });
+  } catch (err) {
+    // Notifications are best-effort; a failure here must not fail the swap.
+    console.warn('Failed to create duty swap notification:', err);
   }
 };
 
@@ -223,18 +272,29 @@ export const useDuties = (params: {
   const memoryUsageRef = useRef<{
     initialUsage: number | null;
     peakUsage: number | null;
-    lastChecked: number; 
+    lastChecked: number;
+    lastLogged: number;
+    lastSuccessLogged: number;
   }>({
     initialUsage: null,
     peakUsage: null,
-    lastChecked: Date.now()
+    lastChecked: Date.now(),
+    lastLogged: 0,
+    lastSuccessLogged: 0
   });
   
-  console.log('🪝 useDuties hook called with params:', {
-    currentDate: format(params.currentDate, 'yyyy-MM-dd'), 
-    viewMode: params.viewMode,
-    personalViewOnly: params.personalViewOnly || 'ALL_USERS'
-  });
+  // Only log in development and limit frequency
+  if (import.meta.env.DEV) {
+    const now = Date.now();
+    if (!memoryUsageRef.current.lastLogged || now - memoryUsageRef.current.lastLogged > 10000) {
+      console.log('🪝 useDuties hook called with params:', {
+        currentDate: format(params.currentDate, 'yyyy-MM-dd'), 
+        viewMode: params.viewMode,
+        personalViewOnly: params.personalViewOnly || 'ALL_USERS'
+      });
+      memoryUsageRef.current.lastLogged = now;
+    }
+  }
 
   // Memory monitoring function
   const checkMemoryUsage = () => {
@@ -302,10 +362,14 @@ export const useDuties = (params: {
       return cleanupDutyData(data);
     },
     onSuccess: (data) => {
-      console.log('✅ useDuties query successful:', {
-        dataLength: data.length,
-        queryKey: ['duties', params.currentDate.getTime(), params.viewMode, params.personalViewOnly || 'all']
-      });
+      // Only log in development and limit frequency
+      if (import.meta.env.DEV && (!memoryUsageRef.current.lastSuccessLogged || Date.now() - memoryUsageRef.current.lastSuccessLogged > 30000)) {
+        console.log('✅ useDuties query successful:', {
+          dataLength: data.length,
+          queryKey: ['duties', params.currentDate.getTime(), params.viewMode, params.personalViewOnly || 'all']
+        });
+        memoryUsageRef.current.lastSuccessLogged = Date.now();
+      }
        
       // Check memory usage after successful query
       checkMemoryUsage();

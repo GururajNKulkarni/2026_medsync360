@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Download, FileSpreadsheet } from 'lucide-react';
+import { FileSpreadsheet } from 'lucide-react';
 import { Button } from '../../ui/Button';
 import { format } from 'date-fns';
 import type { Duty } from '../../../types/duty.types';
@@ -134,19 +134,6 @@ export const ExportRoster: React.FC<ExportRosterProps> = ({ duties, isLoading = 
 
   return (
     <div className="flex gap-2">
-      <Button
-        variant="outline"
-        size="sm"
-        onClick={exportToCSV}
-        disabled={exporting || isLoading || duties.length === 0} 
-        loading={exporting}
-        title={duties.length === 0 ? "No duties to export" : "Export as CSV file"}
-        aria-label="Export as CSV file"
-      >
-        <Download size={16} className="mr-2" />
-        CSV
-      </Button>
-      
       <Button
         variant="primary"
         size="sm"

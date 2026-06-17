@@ -8,6 +8,9 @@ import type {
   ReferralStatus, 
   ReferralRequest, 
   ReferralStatusUpdate,
+  MedicationHistory,
+  MedicationUpdateType,
+  CompletedReferralData, // Ensure this is imported if defined in referral.types.ts
   mapStatusForDisplay,
   mapStatusForDatabase
 } from '../types/referral.types';
@@ -54,26 +57,25 @@ const fetchReferrals = async (userId: string): Promise<Referral[]> => {
 
     // Transform data to match component interface
     return (referrals || []).map(item => {
-      // Determine status - handle special cases
+      // Determine status - handle special cases with PERSPECTIVE-BASED logic
       let status: ReferralStatus = item.status as ReferralStatus;
       let direction: 'sent' | 'received' = item.from_user_id === userId ? 'sent' : 'received';
       
-      // Ensure status is correct based on direction
-      if (direction === 'sent' && status === 'Received') {
-        // This is a sent referral incorrectly marked as received
-        console.log(`Correcting status for referral ${item.id}: Received -> Sent`);
-        status = 'Sent';
-      } else if (direction === 'received' && status === 'Sent') {
-        // This is a received referral incorrectly marked as sent
-        console.log(`Correcting status for referral ${item.id}: Sent -> Received`);
-        status = 'Received';
-      } else if (status === 'Acknowledged') {
-        // Map 'Acknowledged' to 'Accepted' for UI display
-        status = 'Accepted';
+      // CRITICAL: Handle status mapping based on USER PERSPECTIVE
+      if (status === 'Acknowledged') {
+        if (direction === 'sent') {
+          // For SENDER: Show "Sent" when receiver has acknowledged
+          status = 'Sent';
+        } else {
+          // For RECEIVER: Show "Accepted" when they have acknowledged
+          status = 'Accepted';
+        }
       } else if (item.end_time) {
         // If end_time is set, it's a closed referral
         status = 'Closed';
       }
+      // Preserve transfer statuses as they have specific meaning
+      // "Transferred" and "Received" should not be modified
       
       // Format admission date properly
       let formattedAdmissionDate = item.admission_date
@@ -87,14 +89,22 @@ const fetchReferrals = async (userId: string): Promise<Referral[]> => {
         age: item.patient_age || (item.metadata ? JSON.parse(item.metadata)?.age : 45) || 45,
         sex: (item.patient_sex || (item.metadata ? JSON.parse(item.metadata)?.sex : 'Male') || 'Male') as 'Male' | 'Female' | 'Other',
         admissionDate: formattedAdmissionDate,
+        patientAdmissionTime: item.patient_admission_time || '',
+        roomNo: item.room_no || '',
+        patientIpNo: item.patient_ip_no || '',
         chiefComplaint: item.description,
+        pastHistory: item.past_history || '',
+        generalExamination: item.general_examination || '',
+        medicationGiven: item.medication_given || '',
         urgency: item.urgency as any,
         status: status,
         department: item.to_department,
         doctor: item.to_user?.full_name || 'Unassigned',
+        toUserId: item.to_user_id || null,
         fromDoctor: item.from_user?.full_name || 'Unknown',
         fromDepartment: item.from_user?.department || 'Unknown',
         createdAt: item.created_at,
+        acceptedAt: item.start_time || null,
         attachments: item.attachments || [],
         end_time: item.end_time
       };
@@ -111,8 +121,13 @@ const createReferral = async (referralData: {
   age: number;
   sex: string;
   admissionDate: string;
+  patientAdmissionTime: string;
+  roomNo: string;
+  patientIpNo: string;
   chiefComplaint: string;
-  medicationGiven?: string;
+  pastHistory: string;
+  generalExamination: string;
+  medicationGiven: string;
   urgency: string;
   department: string;
   fromUserId?: string;
@@ -122,12 +137,32 @@ const createReferral = async (referralData: {
   try {
     console.log('Creating referral with data:', referralData);
     
+    // Get the current user's department for from_department
+    const { data: currentUser } = await supabase.auth.getUser();
+    let fromDepartment = '';
+    
+    if (currentUser?.user?.id) {
+      const { data: userData } = await supabase
+        .from('users')
+        .select('department')
+        .eq('id', currentUser.user.id)
+        .single();
+      
+      fromDepartment = userData?.department || '';
+    }
+    
+    // Validate that we have a from_department
+    if (!fromDepartment) {
+      throw new Error('Cannot create referral: User does not have a department assigned');
+    }
+
     // Prepare insert data
     const insertData = {
       title: referralData.patientName,
       description: referralData.chiefComplaint,
       urgency: referralData.urgency,
       from_user_id: referralData.fromUserId,
+      from_department: fromDepartment,  // Add the from_department
       to_department: referralData.department,
       to_user_id: referralData.toUserId || null,
       attachments: referralData.attachments || [],
@@ -136,8 +171,12 @@ const createReferral = async (referralData: {
       patient_age: referralData.age,
       patient_sex: referralData.sex,
       admission_date: referralData.admissionDate,
-      // Add medication field if provided (column now exists in database)
-      ...(referralData.medicationGiven && { medication_given: referralData.medicationGiven })
+      patient_admission_time: referralData.patientAdmissionTime,
+      room_no: referralData.roomNo,
+      patient_ip_no: referralData.patientIpNo,
+      past_history: referralData.pastHistory,
+      general_examination: referralData.generalExamination,
+      medication_given: referralData.medicationGiven
     };
 
     console.log('Inserting referral data:', insertData);
@@ -309,6 +348,244 @@ export const useUpdateReferralStatus = () => {
     onError: (error: any) => {
       toast.error(error.message || 'Failed to update referral');
     },
+  });
+};
+
+// Add medication history entry
+const addMedicationHistory = async (data: {
+  referralId: string;
+  medicationText: string;
+  updateType: MedicationUpdateType;
+  notes?: string;
+  updatedBy?: string;
+}) => {
+  try {
+    console.log('Adding medication history entry:', data);
+    
+    const { data: result, error } = await supabase
+      .from('medication_history')
+      .insert({
+        referral_id: data.referralId,
+        medication_text: data.medicationText,
+        update_type: data.updateType,
+        notes: data.notes,
+        updated_by: data.updatedBy,
+        updated_at: new Date().toISOString()
+      })
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Error adding medication history:', error);
+      throw error;
+    }
+
+    console.log('Medication history added successfully:', result);
+    return result;
+  } catch (error) {
+    console.error('Error adding medication history:', error);
+    throw error;
+  }
+};
+
+// Fetch medication history for a referral
+const fetchMedicationHistory = async (referralId: string): Promise<MedicationHistory[]> => {
+  try {
+    console.log('Fetching medication history for referral:', referralId);
+    
+    const { data, error } = await supabase
+      .from('medication_history')
+      .select(`
+        *,
+        user:users(id, full_name, department)
+      `)
+      .eq('referral_id', referralId)
+      .order('updated_at', { ascending: true });
+
+    if (error) {
+      console.error('Error fetching medication history:', error);
+      throw error;
+    }
+
+    console.log(`Found ${data?.length || 0} medication history entries`);
+    return data || [];
+  } catch (error) {
+    console.error('Error fetching medication history:', error);
+    throw error;
+  }
+};
+
+// Transfer referral function
+const transferReferral = async (data: {
+  originalReferralId: string;
+  newToUserId: string;
+  newToDepartment: string;
+  transferReason?: string;
+  transferNotes?: string;
+  transferredByUserId: string;
+  updatedMedicationOnTransfer?: string;
+}) => {
+  try {
+    console.log('Transferring referral:', data);
+
+    // CRITICAL: The parameter names here MUST EXACTLY MATCH the
+    // parameter names in the backend PostgreSQL function `transfer_referral`.
+    // Mismatches will cause the function call to fail.
+    // p_updated_medication_on_transfer carries the medication the doctor
+    // updated during completion. The DB function copies it to the new
+    // referral AND records the 'transfer_update' medication_history entry.
+    const { data: result, error } = await supabase.rpc('transfer_referral', {
+      p_original_referral_id: data.originalReferralId,
+      p_new_to_user_id: data.newToUserId,
+      p_new_to_department: data.newToDepartment,
+      p_transfer_reason: data.transferReason,
+      p_transfer_notes: data.transferNotes,
+      p_transferred_by_user_id: data.transferredByUserId,
+      p_updated_medication_on_transfer: data.updatedMedicationOnTransfer || null
+    });
+
+    if (error) {
+      console.error('Error transferring referral:', error);
+      throw error;
+    }
+
+    console.log('Referral transferred successfully. New referral ID:', result);
+
+    // NOTE: The 'transfer_update' medication_history entry is now created
+    // inside the transfer_referral() RPC using p_updated_medication_on_transfer.
+    // We no longer insert it here (the old code incorrectly recorded the
+    // transfer *notes* as the medication text).
+
+    return result;
+  } catch (error) {
+    console.error('Error transferring referral:', error);
+    throw error;
+  }
+};
+
+// Fetch transfer history for a referral
+const fetchTransferHistory = async (referralId: string) => {
+  try {
+    console.log('Fetching transfer history for referral:', referralId);
+    
+    const { data, error } = await supabase.rpc('get_referral_transfer_history', {
+      p_referral_id: referralId
+    });
+
+    if (error) {
+      console.error('Error fetching transfer history:', error);
+      throw error;
+    }
+
+    console.log(`Found ${data?.length || 0} transfer history entries`);
+    return data || [];
+  } catch (error) {
+    console.error('Error fetching transfer history:', error);
+    return [];
+  }
+};
+
+// Custom hooks for medication history
+export const useMedicationHistory = (referralId: string) => {
+  return useQuery({
+    queryKey: [...referralKeys.detail(referralId), 'medication-history'],
+    queryFn: () => fetchMedicationHistory(referralId),
+    enabled: !!referralId,
+    staleTime: 2 * 60 * 1000, // 2 minutes
+  });
+};
+
+// Fetch COMPLETE medication trail for a referral
+const fetchCompleteMedicationTrail = async (referralId: string): Promise<CompleteMedicationTrail[]> => {
+  try {
+    console.log('🔄 Fetching complete medication trail for referral:', referralId);
+    
+    // Trust the backend function - it already handles transfer logic internally
+    const { data, error } = await (supabase as any).rpc('get_complete_medication_trail', {
+      p_referral_id: referralId
+    });
+
+    if (error) {
+      console.error('❌ Error fetching complete medication trail:', error);
+      throw error;
+    }
+
+    // Enhanced debugging to see exactly what we're getting
+    console.log(`✅ Found ${data?.length || 0} complete medication trail entries for referral: ${referralId}`);
+    if (data && data.length > 0) {
+      console.log('📊 Complete Medication Trail Data:', data);
+      console.log('🔍 First step:', data[0]);
+      console.log('🔍 Last step:', data[data.length - 1]);
+      console.log('🔍 All action types:', data.map((d: any) => d.action_type));
+    }
+    
+    return (data || []) as CompleteMedicationTrail[];
+  } catch (error) {
+    console.error('❌ Error fetching complete medication trail:', error);
+    throw error;
+  }
+};
+
+export const useCompleteMedicationTrail = (referralId: string) => {
+  return useQuery({
+    queryKey: [...referralKeys.detail(referralId), 'complete-medication-trail'],
+    queryFn: () => fetchCompleteMedicationTrail(referralId),
+    enabled: !!referralId,
+    staleTime: 0, // Always fetch fresh data to debug the issue
+    cacheTime: 0, // Don't cache at all for debugging
+    refetchOnWindowFocus: true,
+    refetchOnMount: true,
+    refetchOnReconnect: true
+  });
+};
+
+
+export const useAddMedicationHistory = () => {
+  const queryClient = useQueryClient();
+  
+  return useMutation({
+    mutationFn: addMedicationHistory,
+    onSuccess: (data) => {
+      // Invalidate medication history queries
+      queryClient.invalidateQueries({ 
+        queryKey: [...referralKeys.detail(data.referral_id), 'medication-history'] 
+      });
+      // Also invalidate referrals list to update medication counts
+      queryClient.invalidateQueries({ queryKey: referralKeys.lists() });
+      toast.success('Medication history updated!');
+    },
+    onError: (error: any) => {
+      toast.error(error.message || 'Failed to update medication history');
+    },
+  });
+};
+
+// Custom hooks for transfer functionality
+export const useTransferReferral = () => {
+  const queryClient = useQueryClient();
+  
+  return useMutation({
+    mutationFn: transferReferral,
+    // transfer_referral is NOT idempotent — a retry would create a second
+    // child referral. Never auto-retry (overrides the global mutations retry).
+    retry: false,
+    onSuccess: () => {
+      // Invalidate all referral queries to refresh the lists
+      queryClient.invalidateQueries({ queryKey: referralKeys.lists() });
+      toast.success('Referral transferred successfully!');
+    },
+    onError: (error: any) => {
+      toast.error(error.message || 'Failed to transfer referral');
+    },
+  });
+};
+
+export const useTransferHistory = (referralId: string) => {
+  return useQuery({
+    queryKey: [...referralKeys.detail(referralId), 'transfer-history'],
+    queryFn: () => fetchTransferHistory(referralId),
+    enabled: !!referralId,
+    staleTime: 5 * 60 * 1000, // 5 minutes
   });
 };
 
@@ -538,4 +815,39 @@ const formatFileSize = (sizeInBytes: number): string => {
   } else {
     return `${(sizeInBytes / (1024 * 1024)).toFixed(1)} MB`;
   }
+};
+
+export const useAddDeclineReason = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (declineData: {
+      referral_id: string;
+      reason_code: string;
+      reason_text: string;
+      declined_by: string;
+    }) => {
+      const { data, error } = await supabase
+        .from('referral_decline_reasons')
+        .insert(declineData)
+        .select('id')
+        .single();
+      
+      if (error) throw error;
+
+      // Link the decline reason to the referral
+      await supabase
+        .from('referrals')
+        .update({ decline_reason_id: data.id })
+        .eq('id', declineData.referral_id);
+
+      return data;
+    },
+    onSuccess: (data, variables) => {
+      queryClient.invalidateQueries(referralKeys.detail(variables.referral_id));
+      queryClient.invalidateQueries(referralKeys.lists());
+    },
+    onError: (error: any) => {
+      toast.error(error.message || 'Failed to save decline reason');
+    },
+  });
 };

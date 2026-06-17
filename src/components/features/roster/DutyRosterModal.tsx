@@ -14,7 +14,6 @@ import {
   AlertCircle, 
   Loader,
   Trash2,
-  Cpu,
   Database
 } from 'lucide-react';
 import { useAuthStore } from '../../../store/authStore';
@@ -33,7 +32,6 @@ import { format, addWeeks, subWeeks, addMonths, subMonths } from 'date-fns';
 import { useDuties, useCreateDuty, useSwapDuty, useDeleteDuty, testDirectDbConnection } from '../../../hooks/useDuties';
 import toast from 'react-hot-toast'; 
 import type { Duty, DutySwapRequest, ShiftType } from '../../../types/duty.types';
-import DutyRosterPerformanceMonitor from './DutyRosterPerformanceMonitor';
 
 // Shortened department list for better UI performance
 const DEPARTMENTS = [
@@ -110,7 +108,6 @@ const DutyRosterModal: React.FC<DutyRosterModalProps> = ({ isOpen, onClose }) =>
   const [personalViewOnly, setPersonalViewOnly] = useState(false);
   const [selectedDepartments, setSelectedDepartments] = useState<string[]>([]);
   const [showFiltersModal, setShowFiltersModal] = useState(false);
-  const [showPerformanceMonitor, setShowPerformanceMonitor] = useState(false);
   const [queryStartTime, setQueryStartTime] = useState<number>(0);
   const [queryEndTime, setQueryEndTime] = useState<number>(0);
   const [memoryUsage, setMemoryUsage] = useState<{current: number, peak: number} | null>(null); 
@@ -157,7 +154,7 @@ const DutyRosterModal: React.FC<DutyRosterModalProps> = ({ isOpen, onClose }) =>
     } else if (queryStartTime > 0) {
       setQueryEndTime(performance.now());
     }
-  }, [isFetching, queryStartTime]);
+  }, [isFetching]); // Removed queryStartTime from dependencies to prevent infinite loop
   
   // Monitor memory usage
   useEffect(() => {
@@ -436,16 +433,6 @@ const DutyRosterModal: React.FC<DutyRosterModalProps> = ({ isOpen, onClose }) =>
           </div>
           
           <div className="flex items-center gap-2">
-            <Button
-              variant={showPerformanceMonitor ? "primary" : "outline"}
-              size="sm"
-              onClick={() => setShowPerformanceMonitor(!showPerformanceMonitor)}
-              aria-label={showPerformanceMonitor ? "Hide performance diagnostics" : "Show performance diagnostics"}
-            >
-              <Cpu className="w-4 h-4 mr-2" />
-              {showPerformanceMonitor ? 'Hide Diagnostics' : 'Show Diagnostics'}
-            </Button>
-            
             {/* Memory usage indicator */}
             {memoryUsage && (
               <div className={cn(
@@ -473,22 +460,6 @@ const DutyRosterModal: React.FC<DutyRosterModalProps> = ({ isOpen, onClose }) =>
             <ExportRoster duties={filteredDuties} isLoading={isLoading} />
           </div>
         </div>
-
-        {/* Performance Monitor */}
-        {showPerformanceMonitor && (
-          <DutyRosterPerformanceMonitor
-            isActive={showPerformanceMonitor}
-            dutyCount={duties.length}
-            filteredCount={filteredDuties.length}
-            isLoading={isLoading}
-            onRefresh={() => {
-              setQueryStartTime(0);
-              setQueryEndTime(0);
-              refetch();
-            }}
-            error={error instanceof Error ? error : null}
-          />
-        )}
 
         {/* Loading State */}
         {isLoading && duties.length === 0 && (

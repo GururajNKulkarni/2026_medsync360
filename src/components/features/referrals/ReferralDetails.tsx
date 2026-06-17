@@ -1,47 +1,47 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { FileText, Calendar, Clock, AlertTriangle, CheckCircle, XCircle, Archive, Download, ExternalLink, Eye, File, Image, FileImage, File as FilePdf, FileText as FileTextIcon, Shield, Tag, User, Building2, AlertCircle, X } from 'lucide-react';
-import { Bug } from 'lucide-react';
+import { FileText, Calendar, Clock, AlertTriangle, CheckCircle, XCircle, Archive, Download, ExternalLink, Eye, File, FileImage, File as FilePdf, FileText as FileTextIcon, Shield, Tag, User, Building2, X, Stethoscope } from 'lucide-react';
 import { Button } from '../../ui/Button';
-import { Card } from '../../ui/Card';
-import { useReferralAttachments } from '../../../hooks/useReferrals';
+import {
+  useReferralAttachments,
+  useTransferHistory,
+  useMedicationHistory,
+  useCompleteMedicationTrail,
+} from '../../../hooks/useReferrals';
+import { useQueryClient } from '@tanstack/react-query';
 import { cn } from '../../../lib/utils';
 import { format } from 'date-fns';
 import toast from 'react-hot-toast';
-import type { Referral, ReferralStatus, UrgencyLevel, ReferralAttachment } from '../../../types/referral.types';
+import type { Referral, ReferralStatus, ReferralAttachment } from '../../../types/referral.types';
 import { mapStatusForDisplay } from '../../../types/referral.types';
-import { ResponsiveModal } from '../../ui/ResponsiveModal';
-import { AttachmentDiagnostic } from './AttachmentDiagnostic';
+import { ReferralCompletionModal, type CompletionData, type TransferData } from './ReferralCompletionModal';
+import { ReferralTransferModal } from './ReferralTransferModal';
+import { generateReferralExcelReport } from '../../../utils/excelExport';
+import type { CompletedReferralData } from '../../../types/referral.types';
+import { useAuthStore } from '../../../store/authStore';
+import { supabase } from '../../../lib/supabase';
+import { DeclineReferralModal } from './DeclineReferralModal';
+
+function formatTimeAMPM(time: string): string {
+  if (!time) return '';
+  if (/am|pm/i.test(time)) return time;
+  const [hStr, mStr] = time.split(':');
+  const h = parseInt(hStr, 10);
+  const m = parseInt(mStr, 10);
+  if (isNaN(h) || isNaN(m)) return time;
+  const period = h < 12 ? 'AM' : 'PM';
+  const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h;
+  return `${h12}:${String(m).padStart(2, '0')} ${period}`;
+}
 
 interface ReferralDetailsProps {
   referral: Referral;
+  direction?: 'sent' | 'received';
   onStatusChange: (id: string, status: ReferralStatus) => void;
   onClose: () => void;
 }
 
-interface DeclineReason {
-  id: string;
-  label: string;
-  description: string;
-}
 
-const declineReasons: DeclineReason[] = [
-  {
-    id: 'incorrect_details',
-    label: 'Incorrect Details',
-    description: 'Patient information or clinical details are incorrect or incomplete'
-  },
-  {
-    id: 'not_needed',
-    label: 'Not Needed Anymore',
-    description: 'Referral is no longer required due to patient condition change or other factors'
-  },
-  {
-    id: 'not_on_duty',
-    label: 'Not On Duty',
-    description: 'Currently not available or on duty to handle this referral'
-  }
-];
 
 const urgencyConfig = {
   Emergency: {
@@ -114,19 +114,111 @@ const statusConfig = {
 };
 
 export const ReferralDetails: React.FC<ReferralDetailsProps> = ({ 
-  referral, 
+  referral,
+  direction = 'received',
   onStatusChange,
   onClose
 }) => {
+  const queryClient = useQueryClient();
   const { data: attachments = [], isLoading: loading } = useReferralAttachments(referral.id);
+  const { data: transferHistory = [] } = useTransferHistory(referral.id);
+  const { data: medicationHistory = [] } = useMedicationHistory(referral.id);
+  const { data: completeMedicationTrail = [], isLoading: isLoadingTrail, refetch: refetchTrail } = useCompleteMedicationTrail(referral.id);
+  
+  // Force cache invalidation on mount to ensure fresh data
+  useEffect(() => {
+    console.log('🔄 Component mounted, invalidating medication trail cache for:', referral.id);
+    queryClient.invalidateQueries({ queryKey: ['referrals', 'detail', referral.id, 'complete-medication-trail'] });
+  }, [referral.id, queryClient]);
+  
+  // Debug logging for complete medication trail
+  useEffect(() => {
+    const trail = completeMedicationTrail as any[];
+    console.log('🔍 Complete Medication Trail Debug:', {
+      referralId: referral.id,
+      trailLength: trail.length,
+      isLoading: isLoadingTrail,
+      trail: trail,
+      transferParentId: referral.transfer_parent_id,
+      referralData: {
+        id: referral.id,
+        transfer_parent_id: referral.transfer_parent_id,
+        status: referral.status,
+        medicationGiven: referral.medicationGiven
+      }
+    });
+    
+    // Additional debugging for UI rendering
+    if (trail.length > 0) {
+      console.log('✅ Medication Trail Data Available:', {
+        steps: trail.length,
+        firstStep: trail[0],
+        lastStep: trail[trail.length - 1],
+        allSteps: trail.map((step: any, idx: number) => ({
+          index: idx,
+          stepNumber: step.step_number,
+          actionType: step.action_type,
+          doctor: step.doctor_name,
+          medication: step.medication_prescribed
+        }))
+      });
+      
+      // Check if the array is being properly mapped
+      const renderedSteps = trail.map((step: any) => `Step ${step.step_number}: ${step.action_type}`);
+      console.log('🎨 Steps that should be rendered:', renderedSteps);
+    } else if (!isLoadingTrail) {
+      console.log('❌ No Medication Trail Data Found');
+    }
+  }, [referral.id, completeMedicationTrail, isLoadingTrail, referral.transfer_parent_id]);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [previewType, setPreviewType] = useState<string | null>(null);
   const [showPreview, setShowPreview] = useState(false);
   const [showDeclineModal, setShowDeclineModal] = useState(false);
-  const [selectedReason, setSelectedReason] = useState<string>('');
-  const [otherReason, setOtherReason] = useState<string>('');
-  const [showDiagnostic, setShowDiagnostic] = useState(false);
   const [imageError, setImageError] = useState(false);
+  
+  // New completion workflow states
+  const [showCompletionModal, setShowCompletionModal] = useState(false);
+  const [showTransferModal, setShowTransferModal] = useState(false);
+  const [transferData, setTransferData] = useState<Partial<TransferData>>({});
+  const { profile } = useAuthStore();
+
+  // Helper function to deduplicate medication trail steps
+  const deduplicateMedicationSteps = (steps: any[]) => {
+    console.log('🔧 BEFORE deduplication:', {
+      totalSteps: steps.length,
+      steps: steps.map((s, i) => `${i+1}. ${s.action_type} by ${s.doctor_name} at ${s.record_timestamp}`)
+    });
+    
+    return steps.reduce((acc: any[], step: any) => {
+      // FIXED: Use more specific uniqueness criteria
+      // Include referral_id to distinguish between steps in different referrals
+      const uniqueKey = `${step.referral_id}-${step.action_type}-${step.doctor_name}-${step.record_timestamp}`;
+      
+      // Check if we already have this exact step
+      const isDuplicate = acc.some(existing => {
+        const existingKey = `${existing.referral_id}-${existing.action_type}-${existing.doctor_name}-${existing.record_timestamp}`;
+        return existingKey === uniqueKey;
+      });
+      
+      if (!isDuplicate) {
+        acc.push(step);
+      } else {
+        console.log('🚫 Removing duplicate step:', {
+          step: `${step.action_type} by ${step.doctor_name}`,
+          timestamp: step.record_timestamp,
+          referralId: step.referral_id
+        });
+      }
+      
+      return acc;
+    }, []);
+  };
+
+  // Determine the final medication. If the referral is closed, use the last entry from the history.
+  const finalMedication = 
+    referral.status === 'Closed' && medicationHistory && medicationHistory.length > 0
+      ? medicationHistory[medicationHistory.length - 1].medication_text
+      : referral.medicationGiven;
 
   // Get urgency and status config
   const urgency = urgencyConfig[referral.urgency as keyof typeof urgencyConfig] || urgencyConfig.Normal;
@@ -135,29 +227,6 @@ export const ReferralDetails: React.FC<ReferralDetailsProps> = ({
   
   const UrgencyIcon = urgency.icon;
   const StatusIcon = status.icon;
-
-  // Helper function to get file type from name
-  const getFileType = (fileName: string): string => {
-    const extension = fileName.split('.').pop()?.toLowerCase() || '';
-    
-    switch (extension) {
-      case 'jpg':
-      case 'jpeg':
-      case 'png':
-      case 'gif':
-      case 'webp':
-        return 'image';
-      case 'pdf':
-        return 'pdf';
-      case 'doc':
-      case 'docx':
-        return 'document';
-      case 'txt':
-        return 'text';
-      default:
-        return 'file';
-    }
-  };
 
   // Handle file preview
   const handlePreview = (attachment: ReferralAttachment) => {
@@ -220,29 +289,367 @@ export const ReferralDetails: React.FC<ReferralDetailsProps> = ({
   };
 
   // Handle decline with reason
-  const handleDecline = () => {
-    if (!selectedReason) {
-      toast.error('Please select a reason for declining');
-      return;
+  const handleDecline = async (reasonCode: string, reasonText: string) => {
+    try {
+      // Step 1: Save the decline reason to the new table
+      const { data, error } = await (supabase as any)
+        .from('referral_decline_reasons')
+        .insert({
+          referral_id: referral.id,
+          reason_code: reasonCode,
+          reason_text: reasonText,
+          declined_by: profile?.id
+        })
+        .select('id')
+        .single();
+
+      if (error) throw error;
+
+      // Step 2: Update the referral with the new decline_reason_id
+      await (supabase as any)
+        .from('referrals')
+        .update({ decline_reason_id: data.id, status: 'Cancelled' })
+        .eq('id', referral.id);
+
+      // Step 3: Update local UI state
+      onStatusChange(referral.id, 'Cancelled');
+      
+      toast.success(`Referral declined: ${reasonText}`);
+      setShowDeclineModal(false);
+      onClose();
+
+    } catch (error) {
+      console.error('❌ Error declining referral:', error);
+      toast.error('Failed to decline referral. Please try again.');
     }
-    
-    // Get the selected reason text
-    const reason = selectedReason === 'other' 
-      ? otherReason 
-      : declineReasons.find(r => r.id === selectedReason)?.label || 'Unknown reason';
-    
-    // Log the reason (in a real app, this would be saved to the database)
-    console.log(`Declining referral ${referral.id} with reason: ${reason}`);
-    
-    // Update the referral status
-    onStatusChange(referral.id, 'Cancelled');
-    
-    // Show confirmation toast
-    toast.success(`Referral declined: ${reason}`);
-    
-    // Close modals
-    setShowDeclineModal(false);
-    onClose();
+  };
+
+  // Handle completion workflow
+  const handleReferralCompletion = async (completionData: CompletionData) => {
+    try {
+      if (completionData.action === 'close') {
+        if (!completionData.isPatientAttended) {
+          // Handle cases where patient was not attended - simply close the referral
+          onStatusChange(referral.id, 'Closed');
+          setShowCompletionModal(false);
+          onClose();
+          return;
+        }
+
+        // Use the same complete_referral RPC as the card quick action path
+        console.log('📝 Completing referral with RPC:', referral.id);
+        const { error } = await (supabase as any).rpc('complete_referral', {
+          p_referral_id: referral.id,
+          p_updated_medication: completionData.updatedMedication || referral.medicationGiven,
+          p_completed_by_user_id: profile?.id,
+          p_final_diagnosis_category: completionData.finalDiagnosisCategory,
+          p_final_diagnosis_details: completionData.finalDiagnosisDetails
+        });
+
+        if (error) {
+          throw error;
+        }
+
+        toast.success('Referral completed successfully!');
+        
+        // Generate Excel report with the completion data
+        try {
+          // Fetch fresh medication history and complete trail
+          const [medicationHistoryResult, completeMedicationTrailResult] = await Promise.all([
+            (supabase as any).rpc('get_medication_timeline', {
+              p_referral_id: referral.id
+            }),
+            (supabase as any).rpc('get_complete_medication_trail', {
+              p_referral_id: referral.id
+            })
+          ]);
+
+          const freshMedicationHistory = medicationHistoryResult.data;
+          const completeMedicationTrail = completeMedicationTrailResult.data;
+
+          console.log('📊 Excel Report Data:', {
+            referralId: referral.id,
+            medicationHistoryCount: freshMedicationHistory?.length || 0,
+            completeMedicationTrailCount: completeMedicationTrail?.length || 0,
+            trail: completeMedicationTrail
+          });
+
+          const reportData: CompletedReferralData = {
+            referral: {
+              ...referral,
+              medication_history: freshMedicationHistory || []
+            },
+            completionData: {
+              isPatientAttended: completionData.isPatientAttended,
+              updatedMedication: completionData.updatedMedication || referral.medicationGiven,
+              reasons: completionData.reasons,
+              completedAt: new Date().toISOString(),
+              completedBy: profile?.full_name || 'Unknown User',
+              finalDiagnosisCategory: completionData.finalDiagnosisCategory,
+              finalDiagnosisDetails: completionData.finalDiagnosisDetails,
+              finalDiagnosisTimestamp: completionData.finalDiagnosisCategory || completionData.finalDiagnosisDetails ? new Date().toISOString() : undefined,
+              finalDiagnosisBy: completionData.finalDiagnosisCategory || completionData.finalDiagnosisDetails ? profile?.full_name || 'Unknown User' : undefined
+            },
+            transferHistory: transferHistory || [],
+            completeMedicationTrail: completeMedicationTrail || []
+          };
+          
+          await generateReferralExcelReport(reportData);
+          
+          toast.success('Excel report generated successfully!');
+        } catch (error) {
+          console.error('Error generating Excel report:', error);
+          // Don't show error toast as the referral was completed successfully
+        }
+        
+        // Update the referral status locally and in the parent component
+        onStatusChange(referral.id, 'Closed');
+        
+        // Close modals
+        setShowCompletionModal(false);
+        onClose();
+
+      } else {
+        // This is the transfer workflow, which is handled separately.
+        setTransferData(completionData);
+        setShowCompletionModal(false);
+        setShowTransferModal(true);
+      }
+    } catch (error) {
+      console.error('❌ Error processing referral completion:', error);
+      toast.error('Failed to complete referral. Please try again.');
+    }
+  };
+
+  // Handle transfer option from completion modal
+  const handleTransferOption = (completionData: CompletionData) => {
+    // Store completion data and open transfer modal
+    setTransferData(completionData);
+    setShowCompletionModal(false);
+    setShowTransferModal(true);
+  };
+
+  // Handle referral transfer
+  const handleReferralTransfer = async (transferData: TransferData) => {
+    try {
+      console.log('Transferring referral with data:', transferData);
+      
+      // Here you would typically:
+      // 1. Upload any new attachments
+      // 2. Create a new referral for the target department
+      // 3. Update the original referral status
+      // 4. Notify the target doctor
+      
+      // For now, we'll simulate the transfer
+      toast.success(`Referral transferred to ${transferData.department}`);
+      
+      // Update referral status (you might want a different status like 'Transferred')
+      onStatusChange(referral.id, 'Closed');
+      
+      setShowTransferModal(false);
+      onClose();
+    } catch (error) {
+      console.error('Error transferring referral:', error);
+      toast.error('Failed to transfer referral');
+    }
+  };
+
+  // Handle on-demand Excel report download for closed referrals
+  const [isDownloading, setIsDownloading] = useState(false);
+  const handleDownloadReport = async () => {
+    console.log('🚀 === EXCEL REPORT GENERATION START ===');
+    console.log('📋 Referral ID:', referral.id);
+    console.log('👤 User Profile:', profile);
+    console.log('📊 Initial Data:', {
+      medicationHistoryLength: medicationHistory.length,
+      transferHistoryLength: transferHistory?.length || 0,
+      referralStatus: referral.status,
+      hasTransferParent: !!referral.transfer_parent_id
+    });
+
+    try {
+      setIsDownloading(true);
+      console.log('⏳ Loading state set to true');
+      
+      // Step 1: Handle final diagnosis data
+      console.log('📋 Step 1: Processing final diagnosis data...');
+      let finalDiagnosisData = {
+        category: (referral as any).final_diagnosis_category || referral.finalDiagnosisCategory,
+        details: (referral as any).final_diagnosis_details || referral.finalDiagnosisDetails,
+        timestamp: (referral as any).final_diagnosis_timestamp || referral.finalDiagnosisTimestamp,
+        by: (referral as any).final_diagnosis_by || referral.finalDiagnosisBy
+      };
+      console.log('📋 Initial final diagnosis data:', finalDiagnosisData);
+      console.log('📋 Raw referral diagnosis fields:', {
+        snake_case: {
+          category: (referral as any).final_diagnosis_category,
+          details: (referral as any).final_diagnosis_details,
+          timestamp: (referral as any).final_diagnosis_timestamp,
+          by: (referral as any).final_diagnosis_by
+        },
+        camelCase: {
+          category: referral.finalDiagnosisCategory,
+          details: referral.finalDiagnosisDetails,
+          timestamp: referral.finalDiagnosisTimestamp,
+          by: referral.finalDiagnosisBy
+        }
+      });
+
+      // If this is a transferred referral, fetch final diagnosis from the original referral
+      if (referral.transfer_parent_id) {
+        console.log('🔄 Step 1a: Fetching final diagnosis from original referral:', referral.transfer_parent_id);
+        try {
+          const { data: originalReferral, error: originalError } = await (supabase as any)
+            .from('referrals')
+            .select('final_diagnosis_category, final_diagnosis_details, final_diagnosis_timestamp, final_diagnosis_by')
+            .eq('id', referral.transfer_parent_id)
+            .single();
+
+          if (originalError) {
+            console.error('❌ Error fetching original referral final diagnosis:', originalError);
+            throw new Error(`Failed to fetch original referral data: ${originalError.message}`);
+          } else if (originalReferral) {
+            finalDiagnosisData = {
+              category: originalReferral.final_diagnosis_category,
+              details: originalReferral.final_diagnosis_details,
+              timestamp: originalReferral.final_diagnosis_timestamp,
+              by: originalReferral.final_diagnosis_by
+            };
+            console.log('✅ Updated final diagnosis from original referral:', finalDiagnosisData);
+          } else {
+            console.warn('⚠️ No original referral found for transfer_parent_id:', referral.transfer_parent_id);
+          }
+        } catch (diagnosisError: any) {
+          console.error('❌ Critical error in final diagnosis fetch:', diagnosisError);
+          throw new Error(`Final diagnosis fetch failed: ${diagnosisError.message}`);
+        }
+      }
+      
+      // Step 1.5: Resolve final diagnosis user ID to user name
+      if (finalDiagnosisData.by && typeof finalDiagnosisData.by === 'string' && finalDiagnosisData.by.includes('-')) {
+        console.log('🔄 Step 1.5: Resolving diagnosis user ID to name:', finalDiagnosisData.by);
+        try {
+          const { data: userData, error: userError } = await (supabase as any)
+            .from('users')
+            .select('full_name')
+            .eq('id', finalDiagnosisData.by)
+            .single();
+
+          if (userError) {
+            console.error('❌ Error fetching user name:', userError);
+          } else if (userData) {
+            finalDiagnosisData.by = userData.full_name;
+            console.log('✅ Resolved diagnosis user name:', userData.full_name);
+          }
+        } catch (userResolveError: any) {
+          console.error('❌ Critical error resolving diagnosis user:', userResolveError);
+          // Keep the original ID if resolution fails
+        }
+      }
+      
+      // Step 2: Fetch complete medication trail
+      console.log('💊 Step 2: Fetching complete medication trail...');
+      let completeMedicationTrail: any[] = [];
+      try {
+        const { data: completeMedicationTrailData, error: trailError } = await (supabase as any).rpc('get_complete_medication_trail', {
+          p_referral_id: referral.id
+        });
+
+        if (trailError) {
+          console.error('❌ Error fetching complete medication trail:', trailError);
+          throw new Error(`Medication trail fetch failed: ${trailError.message}`);
+        }
+
+        completeMedicationTrail = completeMedicationTrailData || [];
+        console.log('✅ Complete medication trail fetched:', {
+          count: completeMedicationTrail.length,
+          data: completeMedicationTrail.slice(0, 2) // Show first 2 entries for debugging
+        });
+      } catch (trailError: any) {
+        console.error('❌ Critical error in medication trail fetch:', trailError);
+        throw new Error(`Medication trail processing failed: ${trailError.message}`);
+      }
+
+      // Step 3: Determine final medication
+      console.log('💊 Step 3: Determining final medication...');
+      const finalMedication = medicationHistory.length > 0 
+        ? medicationHistory[medicationHistory.length - 1].medication_text 
+        : referral.medicationGiven;
+      console.log('💊 Final medication determined:', finalMedication);
+
+      // Step 4: Build report data structure
+      console.log('📄 Step 4: Building report data structure...');
+      const reportData: CompletedReferralData = {
+        referral: {
+          ...referral,
+          medicationGiven: referral.medicationGiven || 'No medication information available',
+          medication_history: medicationHistory
+        },
+        completionData: {
+          isPatientAttended: true, // Assume true for closed referrals
+          updatedMedication: finalMedication,
+          reasons: undefined,
+          completedAt: new Date().toISOString(),
+          completedBy: profile?.full_name || 'Unknown User',
+          finalDiagnosisCategory: finalDiagnosisData.category,
+          finalDiagnosisDetails: finalDiagnosisData.details,
+          finalDiagnosisTimestamp: finalDiagnosisData.timestamp,
+          finalDiagnosisBy: finalDiagnosisData.by
+        },
+        transferHistory: transferHistory || [],
+        completeMedicationTrail: completeMedicationTrail
+      };
+      
+      console.log('📄 Final report data structure:', {
+        referralId: reportData.referral.id,
+        patientName: reportData.referral.patientName,
+        medicationHistoryCount: reportData.referral.medication_history?.length || 0,
+        transferHistoryCount: reportData.transferHistory.length,
+        completeMedicationTrailCount: reportData.completeMedicationTrail.length,
+        hasFinalDiagnosis: !!(reportData.completionData.finalDiagnosisCategory || reportData.completionData.finalDiagnosisDetails)
+      });
+
+      // Step 5: Generate Excel report
+      console.log('📊 Step 5: Calling generateReferralExcelReport...');
+      await generateReferralExcelReport(reportData);
+      console.log('✅ Excel report generation completed successfully!');
+      
+      toast.success('Excel report downloaded successfully!');
+      console.log('🎉 === EXCEL REPORT GENERATION SUCCESS ===');
+      
+    } catch (error: any) {
+      console.error('💥 === EXCEL REPORT GENERATION FAILED ===');
+      console.error('❌ Error Type:', error.constructor.name);
+      console.error('❌ Error Message:', error.message);
+      console.error('❌ Error Stack:', error.stack);
+      console.error('❌ Referral Context:', {
+        referralId: referral.id,
+        referralStatus: referral.status,
+        patientName: referral.patientName,
+        hasTransferParent: !!referral.transfer_parent_id,
+        transferParentId: referral.transfer_parent_id
+      });
+      
+      // More specific error messages
+      let userMessage = 'Failed to generate report';
+      if (error.message.includes('Final diagnosis fetch failed')) {
+        userMessage = 'Failed to fetch referral diagnosis data';
+      } else if (error.message.includes('Medication trail')) {
+        userMessage = 'Failed to fetch medication history';
+      } else if (error.message.includes('buildReportData')) {
+        userMessage = 'Failed to process report data';
+      } else if (error.message.includes('XLSX')) {
+        userMessage = 'Failed to generate Excel file';
+      }
+      
+      toast.error(`${userMessage}: ${error.message}`);
+      console.error('🚨 User notified with error message:', userMessage);
+      
+    } finally {
+      setIsDownloading(false);
+      console.log('🔄 Loading state reset to false');
+      console.log('🏁 === EXCEL REPORT GENERATION END ===');
+    }
   };
 
   return (
@@ -301,10 +708,23 @@ export const ReferralDetails: React.FC<ReferralDetailsProps> = ({
             <p className="text-sm font-medium text-blue-700 mb-1">Sex</p>
             <p className="text-base font-semibold text-gray-900">{referral.sex}</p>
           </div>
-          <div className="md:col-span-3">
+          <div>
+            <p className="text-sm font-medium text-blue-700 mb-1">Room No</p>
+            <p className="text-base font-semibold text-gray-900">{referral.roomNo || 'Not specified'}</p>
+          </div>
+          <div>
+            <p className="text-sm font-medium text-blue-700 mb-1">Patient IP No</p>
+            <p className="text-base font-semibold text-gray-900">{referral.patientIpNo || 'Not specified'}</p>
+          </div>
+          <div>
             <p className="text-sm font-medium text-blue-700 mb-1">Admission Date</p>
             <p className="text-base font-semibold text-gray-900">
               {format(new Date(referral.admissionDate), 'MMMM d, yyyy')}
+              {referral.patientAdmissionTime && (
+                <span className="text-sm font-normal text-blue-600 ml-2">
+                  at {formatTimeAMPM(referral.patientAdmissionTime)}
+                </span>
+              )}
             </p>
           </div>
         </div>
@@ -320,6 +740,217 @@ export const ReferralDetails: React.FC<ReferralDetailsProps> = ({
           <p className="text-gray-800 whitespace-pre-wrap">{referral.chiefComplaint}</p>
         </div>
       </div>
+
+      {/* Past History */}
+      {referral.pastHistory && (
+        <div>
+          <h3 className="text-lg font-semibold text-gray-900 mb-3 flex items-center">
+            <FileText className="w-5 h-5 text-blue-600 mr-2" />
+            Past History
+          </h3>
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+            <p className="text-gray-800 whitespace-pre-wrap">{referral.pastHistory}</p>
+          </div>
+        </div>
+      )}
+
+      {/* General Examination */}
+      {referral.generalExamination && (
+        <div>
+          <h3 className="text-lg font-semibold text-gray-900 mb-3 flex items-center">
+            <Stethoscope className="w-5 h-5 text-purple-600 mr-2" />
+            General Examination
+          </h3>
+          <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
+            <p className="text-gray-800 whitespace-pre-wrap">{referral.generalExamination}</p>
+          </div>
+        </div>
+      )}
+
+      {/* Enhanced Medication Information with Complete Trail */}
+      {(referral.medicationGiven || referral.initialMedication || (completeMedicationTrail as any[]).length > 0 || isLoadingTrail) && (
+        <div>
+          <h3 className="text-lg font-semibold text-gray-900 mb-3 flex items-center">
+            <Stethoscope className="w-5 h-5 text-green-600 mr-2" />
+            Medication Information
+          </h3>
+          
+                    {/* Show complete medication trail if available */}
+          {(() => {
+            const trail = completeMedicationTrail as any[];
+            console.log('🔍 Medication Trail Display Check:', {
+              trail,
+              isArray: Array.isArray(trail),
+              length: trail?.length,
+              type: typeof trail,
+              firstItem: trail?.[0],
+              allSteps: trail?.map(s => `${s.step_number}: ${s.action_type} by ${s.doctor_name}`)
+            });
+            return trail && Array.isArray(trail) && trail.length > 0;
+          })() ? (
+            <div className="space-y-4">
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <h4 className="text-sm font-semibold text-blue-700 flex items-center">
+                    <FileText className="w-4 h-4 mr-2" />
+                    Complete Medication Journey ({(completeMedicationTrail as any[]).length} steps)
+                  </h4>
+                  {/* Debug button to manually refetch */}
+                  <button
+                    onClick={() => {
+                      console.log('🔄 Manually refetching medication trail...');
+                      refetchTrail();
+                    }}
+                    className="text-xs bg-blue-100 hover:bg-blue-200 text-blue-700 px-2 py-1 rounded"
+                  >
+                    🔄 Refresh
+                  </button>
+                </div>
+                {isLoadingTrail ? (
+                  <div className="flex items-center justify-center py-8">
+                    <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+                    <span className="ml-2 text-blue-600">Loading complete medication trail...</span>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {(() => {
+                      // FIXED: Remove duplicates and fix step numbering
+                      const uniqueSteps = deduplicateMedicationSteps(completeMedicationTrail as any[]);
+                      
+                      // Re-number the steps after deduplication
+                      const reNumberedSteps = uniqueSteps.map((step, index) => ({
+                        ...step,
+                        display_step_number: index + 1
+                      }));
+                      
+                      console.log('🎯 FIXED Medication Journey:', {
+                        originalCount: (completeMedicationTrail as any[]).length,
+                        uniqueCount: reNumberedSteps.length,
+                        removedDuplicates: (completeMedicationTrail as any[]).length - reNumberedSteps.length
+                      });
+                      
+                      return reNumberedSteps.map((step: any, index: number) => (
+                        <div
+                          key={`${step.referral_id}-${step.display_step_number}-${index}-fixed`}
+                          data-testid={`medication-step-${step.display_step_number}`}
+                          className="flex items-start" // Use flexbox for robust layout
+                        >
+                        {/* Timeline Column */}
+                        <div className="flex flex-col items-center mr-4">
+                          {/* Timeline dot */}
+                          <div className={cn(
+                            "w-3 h-3 rounded-full border-2 bg-white z-10",
+                            step.action_type === 'Created Referral' ? "border-blue-500" :
+                            step.action_type === 'Updated During Transfer' ? "border-orange-500" :
+                            "border-green-500"
+                          )} />
+                          {/* Timeline line */}
+                          {index < reNumberedSteps.length - 1 && (
+                            <div className="w-0.5 flex-grow bg-blue-200" />
+                          )}
+                        </div>
+                        
+                        {/* Step content */}
+                        <div className="bg-white border border-gray-200 rounded-lg p-3 flex-1 mb-4">
+                          <div className="flex items-center justify-between mb-2">
+                            <div className="flex items-center space-x-2">
+                              <span className={cn(
+                                "inline-flex items-center px-2 py-1 rounded-full text-xs font-medium",
+                                step.action_type === 'Created Referral' ? "bg-blue-100 text-blue-800" :
+                                step.action_type === 'Updated During Transfer' ? "bg-orange-100 text-orange-800" :
+                                step.action_type === 'Received Transfer' ? "bg-purple-100 text-purple-800" :
+                                step.action_type === 'Completed Referral' ? "bg-green-100 text-green-800" :
+                                "bg-gray-100 text-gray-800"
+                              )}>
+                                Step {step.display_step_number}: {step.action_type}
+                              </span>
+                              {step.is_original_referral && (
+                                <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
+                                  Original
+                                </span>
+                              )}
+                            </div>
+                            <span className="text-xs text-gray-500">{step.record_timestamp ? format(new Date(step.record_timestamp), 'MMM d, yyyy h:mm a') : ''}</span>
+                          </div>
+                          
+                          <div className="space-y-2">
+                            <div className="flex items-center text-sm">
+                              <User className="w-4 h-4 text-gray-400 mr-2" />
+                              <span className="font-medium text-gray-900">{step.doctor_name}</span>
+                              <span className="text-gray-500 ml-2">({step.department_context})</span>
+                            </div>
+                            
+                            <div className="bg-gray-50 rounded p-3">
+                              <p className="text-sm font-medium text-gray-700 mb-1">Medication Prescribed:</p>
+                              <p className="text-gray-900 whitespace-pre-wrap font-mono text-sm bg-white border rounded px-2 py-1">
+                                {step.medication_prescribed}
+                              </p>
+                            </div>
+                            
+                            <p className="text-xs text-gray-600 italic">{step.medication_context}</p>
+                          </div>
+                        </div>
+                      </div>
+                      ));
+                    })()}
+                  </div>
+                )}
+              </div>
+              
+              {/* Summary section showing first and last medication */}
+              {(() => {
+                // Use the same deduplication logic for the summary
+                const uniqueSteps = deduplicateMedicationSteps(completeMedicationTrail as any[]);
+                
+                return uniqueSteps.length > 1 && (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                      <p className="text-sm font-medium text-blue-700 mb-1">Original Medication</p>
+                      <p className="text-gray-800 whitespace-pre-wrap font-mono text-sm">
+                        {uniqueSteps[0]?.medication_prescribed || 'N/A'}
+                      </p>
+                      <p className="text-xs text-blue-600 mt-1">
+                        By {uniqueSteps[0]?.doctor_name}
+                      </p>
+                    </div>
+                    
+                    <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                      <p className="text-sm font-medium text-green-700 mb-1">
+                        {referral.status === 'Closed' ? 'Final Medication' : 'Current Medication'}
+                      </p>
+                      <p className="text-gray-800 whitespace-pre-wrap font-mono text-sm">
+                        {uniqueSteps[uniqueSteps.length - 1]?.medication_prescribed || 'N/A'}
+                      </p>
+                      <p className="text-xs text-green-600 mt-1">
+                        By {uniqueSteps[uniqueSteps.length - 1]?.doctor_name}
+                      </p>
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
+          ) : (
+            /* Fallback to original medication display if trail is not available */
+            <div className="space-y-3">
+              {/* Initial Medication */}
+              {referral.initialMedication && (
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                  <p className="text-sm font-medium text-blue-700 mb-1">Initial Medication</p>
+                  <p className="text-gray-800 whitespace-pre-wrap">{referral.initialMedication}</p>
+                </div>
+              )}
+              
+              {/* Current/Final Medication */}
+              <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                <p className="text-sm font-medium text-green-700 mb-1">
+                  {referral.status === 'Closed' ? 'Final Medication' : 'Current Medication'}
+                </p>
+                <p className="text-gray-800 whitespace-pre-wrap">{finalMedication}</p>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Referral Information */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -350,6 +981,27 @@ export const ReferralDetails: React.FC<ReferralDetailsProps> = ({
         </div>
       </div>
 
+      {/* Transfer History */}
+      {transferHistory && (transferHistory as any[]).length > 0 && (
+        <div>
+          <h3 className="text-lg font-semibold text-gray-900 mb-3 flex items-center">
+            <ExternalLink className="w-5 h-5 text-gray-600 mr-2" />
+            Transfer History
+          </h3>
+          <div className="space-y-4">
+            {(transferHistory as any[]).filter((t: any) => t.from_doctor).map((transfer: any, index: number) => (
+              <div key={index} className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                <p className="font-semibold">{transfer.from_doctor} ({transfer.from_department}) transferred to {transfer.to_doctor} ({transfer.to_department})</p>
+                <p className="text-sm text-gray-600">Date: {format(new Date(transfer.transferred_at), 'MMM d, yyyy, p')}</p>
+                <p className="text-sm text-gray-600 font-mono">Referral ID: {transfer.referral_id}</p>
+                {transfer.transfer_reason && <p className="text-sm text-gray-600">Reason: {transfer.transfer_reason}</p>}
+                {transfer.transfer_notes && <p className="text-sm text-gray-600">Notes: {transfer.transfer_notes}</p>}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Attachments */}
       {(attachments.length > 0 || loading) && (
         <div>
@@ -364,7 +1016,7 @@ export const ReferralDetails: React.FC<ReferralDetailsProps> = ({
             </div>
           ) : (
             <div className="space-y-2">
-              {attachments.map((attachment) => (
+              {attachments.map((attachment: any) => (
                 <div 
                   key={attachment.id}
                   className="flex items-center justify-between p-3 bg-gray-50 border border-gray-200 rounded-lg hover:bg-gray-100 transition-colors"
@@ -422,23 +1074,12 @@ export const ReferralDetails: React.FC<ReferralDetailsProps> = ({
           <span>All referral data is encrypted and HIPAA compliant</span>
         </div>
         
-        {/* Diagnostic Button */}
-        {attachments.length > 0 && (
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setShowDiagnostic(true)}
-            className="text-xs text-blue-600 mt-2 sm:mt-0"
-          >
-            <Bug className="w-3 h-3 mr-1" />
-            Attachment Diagnostic
-          </Button>
-        )}
+
       </div>
 
       {/* Actions */}
       <div className="flex flex-col sm:flex-row gap-3 pt-4 border-t border-gray-200">
-        {referral.status === 'Received' && (
+        {referral.status === 'Received' && direction === 'received' && (
           <>
             <Button
               onClick={() => {
@@ -465,10 +1106,7 @@ export const ReferralDetails: React.FC<ReferralDetailsProps> = ({
         
         {(referral.status === 'Acknowledged' || referral.status === 'Accepted') && (
           <Button
-            onClick={() => {
-              onStatusChange(referral.id, 'Closed');
-              onClose();
-            }}
+            onClick={() => setShowCompletionModal(true)}
             className="flex-1 bg-gradient-to-r from-blue-600 to-indigo-600"
           >
             <Archive size={16} className="mr-2" />
@@ -476,131 +1114,45 @@ export const ReferralDetails: React.FC<ReferralDetailsProps> = ({
           </Button>
         )}
         
+        {/* Download Report button for closed referrals */}
+        {referral.status === 'Closed' && (
+          <Button
+            onClick={handleDownloadReport}
+            disabled={isDownloading}
+            className="flex-1 bg-gradient-to-r from-green-600 to-green-500"
+          >
+            {isDownloading ? (
+              <>
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2" />
+                Generating...
+              </>
+            ) : (
+              <>
+                <Download size={16} className="mr-2" />
+                Download Report
+              </>
+            )}
+          </Button>
+        )}
+        
         {/* Cancel button always visible */}
         <Button
           variant="outline"
           onClick={onClose}
-          className={referral.status !== 'Received' && referral.status !== 'Acknowledged' && referral.status !== 'Accepted' ? "flex-1" : ""}
+          className={referral.status !== 'Received' && referral.status !== 'Acknowledged' && referral.status !== 'Accepted' && referral.status !== 'Closed' ? "flex-1" : ""}
         >
           Close
         </Button>
       </div>
 
       {/* Decline Reason Modal */}
-      <ResponsiveModal
+      <DeclineReferralModal
         isOpen={showDeclineModal}
         onClose={() => setShowDeclineModal(false)}
-        title="Reason for Declining"
-        size="md"
-      >
-        <div className="space-y-4">
-          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 flex items-start">
-            <AlertCircle className="w-5 h-5 text-yellow-600 mr-3 mt-0.5 flex-shrink-0" />
-            <div>
-              <h3 className="font-medium text-yellow-800 mb-1">Please provide a reason</h3>
-              <p className="text-sm text-yellow-700">
-                Selecting a reason helps the referring doctor understand why the referral was declined.
-              </p>
-            </div>
-          </div>
-          
-          <div className="space-y-3">
-            <h3 className="font-medium text-gray-900">Select a reason:</h3>
-            
-            {declineReasons.map((reason) => (
-              <div 
-                key={reason.id}
-                className={cn(
-                  "p-3 border-2 rounded-lg cursor-pointer transition-all",
-                  selectedReason === reason.id 
-                    ? "border-blue-500 bg-blue-50" 
-                    : "border-gray-200 hover:border-gray-300"
-                )}
-                onClick={() => setSelectedReason(reason.id)}
-              >
-                <div className="flex items-center">
-                  <div className={cn(
-                    "w-5 h-5 rounded-full border flex items-center justify-center mr-3",
-                    selectedReason === reason.id ? "border-blue-500" : "border-gray-400"
-                  )}>
-                    {selectedReason === reason.id && (
-                      <div className="w-3 h-3 bg-blue-500 rounded-full" />
-                    )}
-                  </div>
-                  <div>
-                    <h4 className="font-medium text-gray-900">{reason.label}</h4>
-                    <p className="text-sm text-gray-600">{reason.description}</p>
-                  </div>
-                </div>
-              </div>
-            ))}
-            
-            {/* Other reason option */}
-            <div 
-              className={cn(
-                "p-3 border-2 rounded-lg cursor-pointer transition-all",
-                selectedReason === 'other' 
-                  ? "border-blue-500 bg-blue-50" 
-                  : "border-gray-200 hover:border-gray-300"
-              )}
-              onClick={() => setSelectedReason('other')}
-            >
-              <div className="flex items-center mb-2">
-                <div className={cn(
-                  "w-5 h-5 rounded-full border flex items-center justify-center mr-3",
-                  selectedReason === 'other' ? "border-blue-500" : "border-gray-400"
-                )}>
-                  {selectedReason === 'other' && (
-                    <div className="w-3 h-3 bg-blue-500 rounded-full" />
-                  )}
-                </div>
-                <h4 className="font-medium text-gray-900">Other reason</h4>
-              </div>
-              
-              {selectedReason === 'other' && (
-                <textarea
-                  value={otherReason}
-                  onChange={(e) => setOtherReason(e.target.value)}
-                  placeholder="Please specify the reason..."
-                  className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent mt-2"
-                  rows={3}
-                />
-              )}
-            </div>
-          </div>
-          
-          <div className="flex justify-end gap-3 pt-4 border-t border-gray-200">
-            <Button
-              variant="outline"
-              onClick={() => setShowDeclineModal(false)}
-            >
-              Cancel
-            </Button>
-            <Button
-              onClick={handleDecline}
-              disabled={!selectedReason || (selectedReason === 'other' && !otherReason.trim())}
-              className="bg-red-600 hover:bg-red-700 text-white"
-            >
-              <XCircle size={16} className="mr-2" />
-              Decline Referral
-            </Button>
-          </div>
-        </div>
-      </ResponsiveModal>
+        onDecline={handleDecline}
+      />
       
-      {/* Attachment Diagnostic Modal */}
-      <ResponsiveModal
-        isOpen={showDiagnostic}
-        onClose={() => setShowDiagnostic(false)}
-        title="Attachment Diagnostic"
-        size="lg"
-      >
-        <AttachmentDiagnostic
-          referralId={referral.id}
-          attachments={attachments}
-          onClose={() => setShowDiagnostic(false)}
-        />
-      </ResponsiveModal>
+
 
       {/* File Preview Modal */}
       {showPreview && previewUrl && (
@@ -665,6 +1217,24 @@ export const ReferralDetails: React.FC<ReferralDetailsProps> = ({
           </motion.div>
         </motion.div>
       )}
+
+      {/* Completion Modal */}
+      <ReferralCompletionModal
+        isOpen={showCompletionModal}
+        onClose={() => setShowCompletionModal(false)}
+        referral={referral}
+        onComplete={handleReferralCompletion}
+        onTransfer={handleTransferOption}
+      />
+
+      {/* Transfer Modal */}
+      <ReferralTransferModal
+        isOpen={showTransferModal}
+        onClose={() => setShowTransferModal(false)}
+        referral={referral}
+        transferData={transferData}
+        onTransfer={handleReferralTransfer}
+      />
     </div>
   );
 };
