@@ -63,9 +63,6 @@ export const Layout: React.FC<LayoutProps> = ({ children, showSidebar = true }) 
 
       {/* Mobile bottom navigation */}
       {isMobile && <MobileNav />}
-
-      {/* AI Assistant Floating Button - Only show on non-dashboard pages */}
-      
     </div>
   );
 };

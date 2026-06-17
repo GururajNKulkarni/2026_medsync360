@@ -1,12 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Search, Plus, Users, MessageSquare, Shield, Zap, Sparkles } from 'lucide-react';
+import { X, Search, Plus, Users, MessageSquare, Shield, Zap, Sparkles, Filter, MoreVertical, Trash2, CheckCircle2 } from 'lucide-react';
 import { ResponsiveModal } from '../../ui/ResponsiveModal';
 import { ConversationList } from './ConversationList';
 import { MessageThread } from './MessageThread';
 import { DoctorSearch } from './DoctorSearch';
+import { DeleteConversationModal } from './DeleteConversationModal';
+import { ChatErrorBoundary, ChatSectionFallback } from './ChatErrorBoundary';
 import { useResponsive } from '../../../hooks/useResponsive';
-import { useConversations, useCreateConversation } from '../../../hooks/useChat';
+import { useConversations, useCreateConversation, useDeleteConversation } from '../../../hooks/useChat';
 import { useAuthStore } from '../../../store/authStore';
 import { cn } from '../../../lib/utils';
 import type { Conversation, Doctor } from '../../../types/chat.types';
@@ -21,17 +23,24 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
   const { profile } = useAuthStore();
   const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null);
   const [showDoctorSearch, setShowDoctorSearch] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [conversationToDelete, setConversationToDelete] = useState<Conversation | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [showOnlyUnread, setShowOnlyUnread] = useState(false);
+  const [showHeaderMenu, setShowHeaderMenu] = useState(false);
 
   const { data: conversations = [], isLoading } = useConversations();
   const createConversationMutation = useCreateConversation();
+  const deleteConversationMutation = useDeleteConversation();
 
   // Filter conversations based on search
-  const filteredConversations = conversations.filter(conv =>
-    conv.otherParticipant?.full_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    conv.otherParticipant?.department?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    conv.lastMessage?.content?.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const filteredConversations = conversations
+    .filter(conv =>
+      conv.otherParticipant?.full_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      conv.otherParticipant?.department?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      conv.lastMessage?.content?.toLowerCase().includes(searchQuery.toLowerCase())
+    )
+    .filter(conv => (showOnlyUnread ? (conv.unreadCount ?? 0) > 0 : true));
 
   // Handle creating new conversation
   const handleStartConversation = async (doctor: Doctor) => {
@@ -54,9 +63,36 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
     if (!isOpen) {
       setSelectedConversation(null);
       setShowDoctorSearch(false);
+      setShowDeleteModal(false);
+      setConversationToDelete(null);
       setSearchQuery('');
     }
   }, [isOpen]);
+
+  // Handle delete conversation
+  const handleDeleteConversation = (conversation: Conversation) => {
+    setConversationToDelete(conversation);
+    setShowDeleteModal(true);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!conversationToDelete) return;
+    
+    try {
+      await deleteConversationMutation.mutateAsync({ conversationId: conversationToDelete.id });
+      
+      // If the deleted conversation was selected, clear the selection
+      if (selectedConversation?.id === conversationToDelete.id) {
+        setSelectedConversation(null);
+      }
+      
+      setShowDeleteModal(false);
+      setConversationToDelete(null);
+    } catch (error) {
+      // Error is handled by the mutation
+      console.error('Failed to delete conversation:', error);
+    }
+  };
 
   return (
     <ResponsiveModal
@@ -66,7 +102,13 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
       size="xl" 
       showCloseButton={true}
     >
-      <div className="flex h-[600px] max-h-[80vh] relative overflow-hidden">
+      {/* Dev diagnostics toggle (no-op in production) */}
+      {import.meta.env.MODE !== 'production' && (
+        <div className="sr-only" aria-hidden>
+          {/* reserved for future diagnostic flags */}
+        </div>
+      )}
+      <div className="flex h-[640px] max-h-[82vh] relative overflow-hidden">
         {/* Left Panel - Conversations List */}
         <div className={cn(
           "border-r border-gray-200 bg-gradient-to-b from-gray-50 to-gray-100",
@@ -74,7 +116,7 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
           isMobile ? "w-full" : "w-80"
         )}>
           {/* Header */}
-          <div className="p-4 border-b border-gray-200 bg-gradient-to-r from-blue-50 to-indigo-50">
+          <div className="p-4 border-b border-gray-200 bg-gradient-to-r from-blue-50 to-indigo-50 sticky top-0 z-10">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
                 <div className="p-1.5 bg-blue-100 rounded-lg">
@@ -89,6 +131,18 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
                 </div>
               </h3>
               <div className="flex items-center gap-2">
+                {/* Unread filter */}
+                <button
+                  onClick={() => setShowOnlyUnread(v => !v)}
+                  className={cn(
+                    "px-2.5 py-1 text-xs rounded-lg border transition-colors",
+                    showOnlyUnread ? "bg-blue-600 text-white border-blue-600" : "bg-white text-gray-700 border-gray-300 hover:bg-gray-100"
+                  )}
+                  title={showOnlyUnread ? 'Showing unread only' : 'Show only unread'}
+                >
+                  <Filter className="w-3.5 h-3.5 inline mr-1" />
+                  {showOnlyUnread ? 'Unread' : 'All'}
+                </button>
                 <button
                   onClick={() => setShowDoctorSearch(true)}
                   className="p-2 text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all duration-300 transform hover:scale-105"
@@ -96,6 +150,42 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
                 >
                   <Plus className="w-5 h-5" />
                 </button>
+                {/* Header menu for selected conversation actions */}
+                <div className="relative">
+                  <button
+                    onClick={() => setShowHeaderMenu(v => !v)}
+                    className="p-2 text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg"
+                    title="More"
+                  >
+                    <MoreVertical className="w-5 h-5" />
+                  </button>
+                  {showHeaderMenu && (
+                    <div className="absolute right-0 mt-2 w-48 bg-white border border-gray-200 rounded-lg shadow-xl z-20">
+                      <button
+                        onClick={() => { setShowDoctorSearch(true); setShowHeaderMenu(false); }}
+                        className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50"
+                      >
+                        <Plus className="w-4 h-4 inline mr-2 text-blue-600" /> Start new
+                      </button>
+                      <button
+                        disabled={!selectedConversation}
+                        onClick={() => {
+                          if (selectedConversation) {
+                            setConversationToDelete(selectedConversation);
+                            setShowDeleteModal(true);
+                          }
+                          setShowHeaderMenu(false);
+                        }}
+                        className={cn(
+                          "w-full text-left px-3 py-2 text-sm hover:bg-gray-50",
+                          !selectedConversation && "opacity-50 cursor-not-allowed"
+                        )}
+                      >
+                        <Trash2 className="w-4 h-4 inline mr-2 text-red-600" /> Delete selected
+                      </button>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
 
@@ -114,12 +204,15 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
 
           {/* Conversations */}
           <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-transparent">
-            <ConversationList
-              conversations={filteredConversations}
-              selectedConversation={selectedConversation}
-              onSelectConversation={setSelectedConversation}
-              isLoading={isLoading}
-            />
+            <ChatErrorBoundary fallback={<ChatSectionFallback section="Conversation List" />}>
+              <ConversationList
+                conversations={filteredConversations}
+                selectedConversation={selectedConversation}
+                onSelectConversation={setSelectedConversation}
+                onDeleteConversation={handleDeleteConversation}
+                isLoading={isLoading}
+              />
+            </ChatErrorBoundary>
           </div>
 
           {/* Footer */}
@@ -143,10 +236,12 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
           isMobile && !selectedConversation && "hidden"
         )}>
           {selectedConversation ? (
-            <MessageThread
-              conversation={selectedConversation}
-              onBack={isMobile ? () => setSelectedConversation(null) : undefined}
-            />
+            <ChatErrorBoundary fallback={<ChatSectionFallback section="Message Thread" />}>
+              <MessageThread
+                conversation={selectedConversation}
+                onBack={isMobile ? () => setSelectedConversation(null) : undefined}
+              />
+            </ChatErrorBoundary>
           ) : (
             <div className="flex-1 flex items-center justify-center bg-gradient-to-b from-gray-50 to-gray-100">
               <div className="text-center max-w-md p-8 rounded-2xl bg-white shadow-lg border border-gray-200 transform transition-all duration-500 hover:scale-105">
@@ -181,6 +276,17 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
             </div>
           )}
         </div>
+
+        {/* Mobile floating start button */}
+        {isMobile && (
+          <button
+            onClick={() => setShowDoctorSearch(true)}
+            className="fixed bottom-6 right-6 z-20 p-4 rounded-full shadow-xl bg-gradient-to-r from-blue-600 to-indigo-600 text-white"
+            aria-label="Start new conversation"
+          >
+            <Plus className="w-5 h-5" />
+          </button>
+        )}
         
         {/* Futuristic animated background elements */}
         <div className="absolute inset-0 pointer-events-none overflow-hidden">
@@ -192,13 +298,27 @@ export const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose }) => {
       {/* Doctor Search Modal */}
       <AnimatePresence>
         {showDoctorSearch && (
-          <DoctorSearch
-            isOpen={showDoctorSearch}
-            onClose={() => setShowDoctorSearch(false)}
-            onSelectDoctor={handleStartConversation}
-          />
+          <ChatErrorBoundary fallback={<ChatSectionFallback section="Doctor Search" />}>
+            <DoctorSearch
+              isOpen={showDoctorSearch}
+              onClose={() => setShowDoctorSearch(false)}
+              onSelectDoctor={handleStartConversation}
+            />
+          </ChatErrorBoundary>
         )}
       </AnimatePresence>
+
+      {/* Delete Conversation Modal */}
+      <DeleteConversationModal
+        isOpen={showDeleteModal}
+        onClose={() => {
+          setShowDeleteModal(false);
+          setConversationToDelete(null);
+        }}
+        conversation={conversationToDelete}
+        onConfirm={handleConfirmDelete}
+        isLoading={deleteConversationMutation.isPending}
+      />
     </ResponsiveModal>
   );
 };

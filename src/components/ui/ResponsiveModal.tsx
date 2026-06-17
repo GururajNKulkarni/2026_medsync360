@@ -66,7 +66,7 @@ const ResponsiveModal: React.FC<ResponsiveModalProps> = ({
     "transform transition-all",
     isMobile ? [
       // Mobile: Full screen with rounded corners
-      "fixed inset-x-0 bottom-0 top-4 z-50",
+      "fixed inset-x-0 bottom-0 top-2 z-50", // a bit closer to the top for more height
       "bg-white rounded-t-2xl shadow-2xl"
     ] : [
       // Desktop/Tablet: Centered modal
@@ -74,7 +74,7 @@ const ResponsiveModal: React.FC<ResponsiveModalProps> = ({
       size === 'sm' && "max-w-sm w-full",
       size === 'md' && "max-w-md w-full",
       size === 'lg' && "max-w-lg w-full",
-      size === 'xl' && "max-w-4xl w-full",
+      size === 'xl' && "max-w-5xl w-full", // slightly wider for chat layout
       size === 'full' && "max-w-7xl w-full"
     ]
   );
@@ -134,8 +134,8 @@ const ResponsiveModal: React.FC<ResponsiveModalProps> = ({
               <div className={cn(
                 // Responsive padding
                 "px-4 py-4 sm:px-6 sm:py-5",
-                // Mobile full height handling
-                isMobile && "max-h-[85vh] overflow-y-auto"
+                // Mobile full height handling - REMOVED fixed height to allow content to grow
+                isMobile ? "overflow-y-auto" : ""
               )}>
                 {children}
               </div>

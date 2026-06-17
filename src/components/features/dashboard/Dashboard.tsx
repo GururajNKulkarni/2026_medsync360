@@ -73,17 +73,23 @@ const Dashboard: React.FC = () => {
         transition={{ duration: 0.5 }}
         className={cn(
           "bg-gradient-to-r from-primary-600 to-medical-600 rounded-lg text-white",
-          "p-4 md:p-6"
+          isMobile ? "p-3" : "p-4 md:p-6"
         )}
       >
         <div className={cn(
           "flex",
-          isMobile ? 'flex-col space-y-4' : 'items-start justify-between'
+          isMobile ? 'flex-col space-y-3' : 'items-start justify-between'
         )}>
-          <div className="flex items-center gap-4 flex-1">
+          <div className={cn(
+            "flex items-center flex-1",
+            isMobile ? "gap-3" : "gap-4"
+          )}>
             {/* Profile Photo */}
             <div className="flex-shrink-0">
-              <div className="w-16 h-16 md:w-20 md:h-20 rounded-full overflow-hidden bg-white/20 border-2 border-white/30">
+              <div className={cn(
+                "rounded-full overflow-hidden bg-white/20 border-2 border-white/30",
+                isMobile ? "w-12 h-12" : "w-16 h-16 md:w-20 md:h-20"
+              )}>
                 {profile.avatar_url ? (
                   <img
                     src={profile.avatar_url}
@@ -92,30 +98,47 @@ const Dashboard: React.FC = () => {
                   />
                 ) : (
                   <div className="w-full h-full flex items-center justify-center bg-white/10">
-                    <User className="w-8 h-8 md:w-10 md:h-10 text-white/70" />
+                    <User className={cn(
+                      "text-white/70",
+                      isMobile ? "w-6 h-6" : "w-8 h-8 md:w-10 md:h-10"
+                    )} />
                   </div>
                 )}
               </div>
             </div>
             
             {/* Welcome Text */}
-            <div className="flex-1">
-            <h1 className={cn(
-              "font-bold mb-2",
-              "text-base md:text-lg lg:text-xl"
-            )}>
-              {greeting}, Dr. {profile.full_name?.split(' ')[0]}
-            </h1>
-            <div className="flex flex-wrap items-center gap-4 text-primary-100 text-sm md:text-base">
-              <span>{profile.role} • {profile.department}</span>
-              <span>•</span>
-              <span>{currentTime}</span>
-            </div>
+            <div className="flex-1 min-w-0">
+              <h1 className={cn(
+                "font-bold mb-1 truncate",
+                isMobile ? "text-sm" : "text-base md:text-lg lg:text-xl"
+              )}>
+                {greeting}, Dr. {profile.full_name?.split(' ')[0]}
+              </h1>
+              <div className={cn(
+                "flex flex-wrap items-center gap-2 text-primary-100",
+                isMobile ? "text-xs" : "text-sm md:text-base"
+              )}>
+                <span className="truncate">{profile.role}</span>
+                <span className="hidden sm:inline">•</span>
+                <span className="truncate">{profile.department}</span>
+                {!isMobile && (
+                  <>
+                    <span>•</span>
+                    <span>{currentTime}</span>
+                  </>
+                )}
+              </div>
+              {isMobile && (
+                <div className="text-primary-100 text-xs mt-1">
+                  {currentTime}
+                </div>
+              )}
             </div>
           </div>
           
-          {/* User Information Panel */}
-          <DashboardUserInfo profile={profile} />
+          {/* User Information Panel - Hide on mobile to save space */}
+          {!isMobile && <DashboardUserInfo profile={profile} />}
         </div>
       </motion.div>
 

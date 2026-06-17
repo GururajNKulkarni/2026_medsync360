@@ -72,79 +72,115 @@ export const DashboardStats: React.FC = () => {
   }
 
   return (
-    <div className={cn(
-      "grid gap-4",
-      "grid-cols-1 sm:grid-cols-2 lg:grid-cols-4"
-    )}>
+    <div className="space-y-4">
       {/* Refresh Button */}
-      <div className="col-span-full flex justify-end mb-2">
+      <div className="flex justify-between items-center">
+        <h2 className={cn(
+          "font-semibold text-neutral-900",
+          isMobile ? "text-base" : "text-lg"
+        )}>
+          Dashboard Stats
+        </h2>
         <Button
           variant="ghost"
           size="sm"
           onClick={handleRefresh}
           disabled={isRefetching}
-          className="text-neutral-600 hover:text-neutral-900"
+          className={cn(
+            "text-neutral-600 hover:text-neutral-900",
+            isMobile ? "px-2 py-1" : "px-3 py-2"
+          )}
         >
-          <RefreshCw size={16} className={cn("mr-2", isRefetching && "animate-spin")} />
-          {isRefetching ? 'Refreshing...' : 'Refresh'}
+          <RefreshCw size={isMobile ? 14 : 16} className={cn("mr-1", isRefetching && "animate-spin")} />
+          {!isMobile && (isRefetching ? 'Refreshing...' : 'Refresh')}
         </Button>
       </div>
-      
-      {statsData.map((stat, index) => {
-        const Icon = stat.icon;
-        return (
-          <motion.div
-            key={stat.name}
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5, delay: index * 0.1 }}
-          >
-            <Card variant="elevated" padding="md" hoverable className="relative overflow-hidden">
-              {/* Live indicator for real data */}
-              {(stat.name === 'Active Referrals' || stat.name === 'Upcoming Duties') && (
-                <div className="absolute top-2 right-2 w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
-              )}
-              {/* Placeholder indicator for mock data */}
-              {(stat.name === 'Unread Messages' || stat.name === 'Response Time') && (
-                <div className="absolute top-2 right-2 w-2 h-2 bg-yellow-400 rounded-full"></div>
-              )}
-              
-              <div className="flex items-center justify-between">
-                <div className="min-w-0 flex-1">
-                  <p className={cn(
-                    "font-medium text-neutral-600 truncate",
-                    "text-xs md:text-sm"
-                  )}>
-                    {stat.name}
-                  </p>
-                  <p className={cn(
-                    "font-bold text-neutral-900 mt-1",
-                    "text-lg md:text-xl lg:text-2xl"
-                  )}>
-                    {stat.value}
-                  </p>
-                  <p className={cn(
-                    "mt-1 truncate text-neutral-500",
-                    "text-xs"
-                  )}>
-                    {stat.change}
-                  </p>
-                </div>
+
+      {/* Stats Grid - Enhanced Mobile Layout */}
+      <div className={cn(
+        "grid gap-3",
+        // Mobile: 2 columns for better use of space
+        "grid-cols-2",
+        // Tablet: 2 columns with more spacing
+        "sm:grid-cols-2 sm:gap-4",
+        // Desktop: 4 columns
+        "lg:grid-cols-4 lg:gap-6"
+      )}>
+        {statsData.map((stat, index) => {
+          const Icon = stat.icon;
+          return (
+            <motion.div
+              key={stat.name}
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5, delay: index * 0.1 }}
+            >
+              <Card 
+                variant="elevated" 
+                padding={isMobile ? "sm" : "md"} 
+                hoverable 
+                className="relative overflow-hidden h-full"
+              >
+                {/* Live indicator for real data */}
+                {(stat.name === 'Active Referrals' || stat.name === 'Upcoming Duties') && (
+                  <div className={cn(
+                    "absolute bg-green-400 rounded-full animate-pulse",
+                    isMobile ? "top-1 right-1 w-1.5 h-1.5" : "top-2 right-2 w-2 h-2"
+                  )}></div>
+                )}
+                {/* Placeholder indicator for mock data */}
+                {(stat.name === 'Unread Messages' || stat.name === 'Response Time') && (
+                  <div className={cn(
+                    "absolute bg-yellow-400 rounded-full",
+                    isMobile ? "top-1 right-1 w-1.5 h-1.5" : "top-2 right-2 w-2 h-2"
+                  )}></div>
+                )}
+                
                 <div className={cn(
-                  "rounded-full flex-shrink-0",
-                  "p-2 md:p-3",
-                  `bg-${stat.color}-100`
+                  "flex flex-col",
+                  isMobile ? "gap-2" : "gap-3"
                 )}>
-                  <Icon className={cn(
-                    `text-${stat.color}-600`,
-                    "h-4 w-4 md:h-5 md:w-5 lg:h-6 lg:w-6"
-                  )} />
+                  {/* Header with Icon */}
+                  <div className="flex items-center justify-between">
+                    <div className={cn(
+                      "rounded-full flex-shrink-0",
+                      `bg-${stat.color}-100`,
+                      isMobile ? "p-1.5" : "p-2"
+                    )}>
+                      <Icon className={cn(
+                        `text-${stat.color}-600`,
+                        isMobile ? "h-3 w-3" : "h-4 w-4 md:h-5 md:w-5"
+                      )} />
+                    </div>
+                  </div>
+                  
+                  {/* Content */}
+                  <div className="min-w-0 flex-1">
+                    <p className={cn(
+                      "font-medium text-neutral-600 leading-tight",
+                      isMobile ? "text-xs" : "text-xs md:text-sm"
+                    )}>
+                      {isMobile ? stat.name.split(' ').slice(0, 2).join(' ') : stat.name}
+                    </p>
+                    <p className={cn(
+                      "font-bold text-neutral-900 mt-1 leading-tight",
+                      isMobile ? "text-lg" : "text-xl md:text-2xl lg:text-3xl"
+                    )}>
+                      {stat.value}
+                    </p>
+                    <p className={cn(
+                      "mt-1 text-neutral-500 leading-tight",
+                      isMobile ? "text-xs" : "text-xs"
+                    )}>
+                      {isMobile ? stat.change.split(' ').slice(0, 2).join(' ') : stat.change}
+                    </p>
+                  </div>
                 </div>
-              </div>
-            </Card>
-          </motion.div>
-        );
-      })}
+              </Card>
+            </motion.div>
+          );
+        })}
+      </div>
     </div>
   );
 };

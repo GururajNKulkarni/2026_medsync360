@@ -1,9 +1,11 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { MessageSquare, Users, Lock, Shield } from 'lucide-react';
 import { ChatModal } from './chat/ChatModal';
 
+
 export const Messages: React.FC = () => {
+  const [isChatOpen, setIsChatOpen] = useState(true);
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -48,7 +50,7 @@ export const Messages: React.FC = () => {
           
           <div className="flex justify-center mb-8">
             <button 
-              onClick={() => {}} 
+              onClick={() => setIsChatOpen(true)} 
               className="w-16 h-16 relative p-3 bg-blue-600 text-white rounded-full shadow-lg hover:bg-blue-700 transition-all duration-200 focus:outline-none focus:ring-4 focus:ring-blue-500/30"
             >
               <MessageSquare className="w-6 h-6" />
@@ -95,8 +97,8 @@ export const Messages: React.FC = () => {
         </div>
       </motion.div>
 
-      {/* Open the chat modal automatically */}
-      <ChatModal isOpen={true} onClose={() => {}} />
+      {/* Chat modal */}
+      <ChatModal isOpen={isChatOpen} onClose={() => setIsChatOpen(false)} />
     </div>
   );
 };

@@ -12,7 +12,9 @@ import {
   FileText,
   Building2,
   Stethoscope,
-  MoreVertical
+  MoreVertical,
+  ExternalLink,
+  Eye
 } from 'lucide-react';
 import { useResponsive } from '../../../hooks/useResponsive';
 import { Button } from '../../ui/Button';
@@ -23,7 +25,9 @@ import { mapStatusForDisplay, mapStatusForDatabase } from '../../../types/referr
 
 interface ReferralCardProps {
   referral: Referral;
+  direction?: 'sent' | 'received';
   onStatusChange: (id: string, status: ReferralStatus) => void;
+  onComplete?: (referral: Referral) => void;
   onClick: () => void;
 }
 
@@ -48,6 +52,13 @@ const urgencyConfig = {
     textColor: 'text-neutral-700',
     borderColor: 'border-neutral-200',
     icon: FileText
+  },
+  Elective: {
+    color: 'bg-blue-500',
+    bgColor: 'bg-blue-50',
+    textColor: 'text-blue-700',
+    borderColor: 'border-blue-200',
+    icon: Calendar
   }
 };
 
@@ -76,6 +87,12 @@ const statusConfig = {
     textColor: 'text-purple-700',
     icon: FileText
   },
+  Transferred: {
+    color: 'bg-orange-500',
+    bgColor: 'bg-orange-50',
+    textColor: 'text-orange-700',
+    icon: ExternalLink
+  },
   Cancelled: {
     color: 'bg-red-500',
     bgColor: 'bg-red-50',
@@ -92,18 +109,16 @@ const statusConfig = {
 
 const ReferralCard: React.FC<ReferralCardProps> = ({ 
   referral, 
+  direction = 'received',
   onStatusChange, 
+  onComplete,
   onClick 
 }) => {
+  // ALL hooks must be called before any conditional returns or logic
   const { isMobile } = useResponsive();
   const [showActions, setShowActions] = useState(false);
-  
-  const urgency = urgencyConfig[referral.urgency];
-  // Map status for display and get the correct config
-  const displayStatus = mapStatusForDisplay(referral.status);
-  const status = statusConfig[displayStatus as keyof typeof statusConfig];
-  const UrgencyIcon = urgency.icon;
-  const StatusIcon = status.icon;
+  const [dragX, setDragX] = useState(0);
+  const [isDragging, setIsDragging] = useState(false);
 
   const formatDate = useCallback((dateString: string) => {
     return new Date(dateString).toLocaleDateString('en-US', {
@@ -121,43 +136,84 @@ const ReferralCard: React.FC<ReferralCardProps> = ({
   }, []);
 
   const quickActions = useMemo(() => {
+    if (!referral?.id) return [];
+    
     switch (referral.status) {
       case 'Received':
-        console.log(`Generating quick actions for Received referral ${referral.id}`);
-        return [
-          {
-            label: 'Accept',
-            action: () => onStatusChange(referral.id, 'Accepted'),
-            icon: CheckCircle,
-            variant: 'primary' as const
-          },
-          {
-            label: 'Decline',
-            action: () => onStatusChange(referral.id, 'Cancelled'),
-            icon: XCircle,
-            variant: 'outline' as const
-          }
-        ];
+        console.log(`Generating quick actions for Received referral ${referral.id} (direction: ${direction})`);
+        // Only show Accept/Decline for received referrals (not sent by the current user)
+        if (direction === 'received') {
+          return [
+            {
+              label: 'Accept',
+              action: () => onStatusChange(referral.id, 'Accepted'),
+              icon: CheckCircle,
+              variant: 'primary' as const
+            },
+            {
+              label: 'Decline',
+              action: () => onStatusChange(referral.id, 'Cancelled'),
+              icon: XCircle,
+              variant: 'outline' as const
+            }
+          ];
+        } else {
+          // For sent referrals with 'Received' status, show only view details
+          return [
+            {
+              label: 'View Details',
+              action: onClick,
+              icon: Eye,
+              variant: 'outline' as const
+            }
+          ];
+        }
       case 'Acknowledged': // Support for database status
-        console.log(`Generating quick actions for Acknowledged referral ${referral.id}`);
-        return [
-          {
-            label: 'Complete',
-            action: () => onStatusChange(referral.id, 'Closed'),
-            icon: Archive,
-            variant: 'primary' as const
-          }
-        ];
+        console.log(`Generating quick actions for Acknowledged referral ${referral.id} (direction: ${direction})`);
+        // Only show Complete for received referrals that are acknowledged/accepted
+        if (direction === 'received') {
+          return [
+            {
+              label: 'Complete',
+              action: () => onComplete ? onComplete(referral) : onStatusChange(referral.id, 'Closed'),
+              icon: Archive,
+              variant: 'primary' as const
+            }
+          ];
+        } else {
+          // For sent referrals, show only view details
+          return [
+            {
+              label: 'View Details',
+              action: onClick,
+              icon: Eye,
+              variant: 'outline' as const
+            }
+          ];
+        }
       case 'Accepted':
-        console.log(`Generating quick actions for Accepted referral ${referral.id}`);
-        return [
-          {
-            label: 'Complete',
-            action: () => onStatusChange(referral.id, 'Closed'),
-            icon: Archive,
-            variant: 'primary' as const
-          }
-        ];
+        console.log(`Generating quick actions for Accepted referral ${referral.id} (direction: ${direction})`);
+        // Only show Complete for received referrals that are acknowledged/accepted
+        if (direction === 'received') {
+          return [
+            {
+              label: 'Complete',
+              action: () => onComplete ? onComplete(referral) : onStatusChange(referral.id, 'Closed'),
+              icon: Archive,
+              variant: 'primary' as const
+            }
+          ];
+        } else {
+          // For sent referrals, show only view details
+          return [
+            {
+              label: 'View Details',
+              action: onClick,
+              icon: Eye,
+              variant: 'outline' as const
+            }
+          ];
+        }
       case 'Closed':
         console.log(`Generating quick actions for Closed referral ${referral.id}`);
         return [];
@@ -174,27 +230,37 @@ const ReferralCard: React.FC<ReferralCardProps> = ({
             variant: 'primary' as const
           }
         ];
+      case 'Transferred':
+        console.log(`Generating quick actions for Transferred referral ${referral.id}`);
+        return [
+          {
+            label: 'View Details',
+            action: onClick,
+            icon: Eye,
+            variant: 'outline' as const
+          }
+        ];
       default:
+        console.warn(`No quick actions defined for status: ${referral.status}`);
         return [];
     }
-  }, [referral.status, onStatusChange, referral.id]);
-
-  // Mobile swipe gesture handling
-  const [dragX, setDragX] = useState(0);
-  const [isDragging, setIsDragging] = useState(false);
+  }, [referral?.status, direction, onStatusChange, referral?.id, onComplete, onClick]);
   
   // Log referral details for debugging
   useEffect(() => {
-    console.log(`Rendering ReferralCard for ${referral.id}:`, {
-      status: referral.status,
-      displayStatus,
-      fromDoctor: referral.fromDoctor,
-      toDoctor: referral.doctor,
-      quickActions: quickActions.length
-    });
-  }, [referral.id, referral.status, displayStatus, referral.fromDoctor, referral.doctor, quickActions.length]);
+    if (referral?.id) {
+      const displayStatus = mapStatusForDisplay(referral.status || 'Sent');
+      console.log(`Rendering ReferralCard for ${referral.id}:`, {
+        status: referral.status,
+        displayStatus,
+        fromDoctor: referral.fromDoctor,
+        toDoctor: referral.doctor,
+        quickActions: quickActions.length
+      });
+    }
+  }, [referral, quickActions.length]);
 
-  const handleDragEnd = (event: any, info: any) => {
+  const handleDragEnd = useCallback((event: any, info: any) => {
     setIsDragging(false);
     const threshold = 100;
     
@@ -207,7 +273,32 @@ const ReferralCard: React.FC<ReferralCardProps> = ({
     }
     
     setDragX(0);
-  };
+  }, [quickActions]);
+
+  // Safety check for referral object - after all hooks
+  if (!referral || !referral.id) {
+    console.warn('ReferralCard: Missing referral data', referral);
+    return null;
+  }
+  
+  // Add safety checks for undefined values
+  const urgency = urgencyConfig[referral.urgency || 'Normal'];
+  // Map status for display and get the correct config
+  const displayStatus = mapStatusForDisplay(referral.status || 'Sent');
+  const status = statusConfig[displayStatus as keyof typeof statusConfig] || statusConfig['Sent'];
+  
+  // Debug logging for problematic referrals
+  if (!urgency || !status) {
+    console.error('ReferralCard: Missing config for referral', {
+      id: referral.id,
+      urgency: referral.urgency,
+      status: referral.status,
+      displayStatus
+    });
+  }
+  
+  const UrgencyIcon = urgency.icon;
+  const StatusIcon = status.icon;
 
   return (
     <motion.div

@@ -59,9 +59,9 @@ export const ResearchInsight: React.FC = () => {
   const filters: ResearchFiltersInterface = useMemo(() => ({
     categories: selectedCategories.length > 0 ? selectedCategories : profile?.department ? [profile.department] : undefined,
     searchQuery: searchQuery || undefined,
-    difficulty: selectedDifficulty as any || undefined,
-    significance: selectedSignificance as any || undefined,
-    timeRange: selectedTimeRange as any || undefined,
+    difficulty: (selectedDifficulty as ResearchFiltersInterface['difficulty']) || undefined,
+    significance: (selectedSignificance as ResearchFiltersInterface['significance']) || undefined,
+    timeRange: (selectedTimeRange as ResearchFiltersInterface['timeRange']) || undefined,
     page: currentPage,
     pageSize
   }), [selectedCategories, profile?.department, searchQuery, selectedDifficulty, 

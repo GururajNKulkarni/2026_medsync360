@@ -69,10 +69,3 @@ export interface ContentInteraction {
   interactionType: 'view' | 'bookmark' | 'share' | 'download';
   duration?: number; // Time spent viewing in seconds
 }
-// Analytics types
-export interface ContentInteraction {
-  contentType: 'news' | 'drug' | 'case';
-  contentId: string;
-  interactionType: 'view' | 'bookmark' | 'share' | 'download';
-  duration?: number; // Time spent viewing in seconds
-}

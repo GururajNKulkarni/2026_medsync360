@@ -288,21 +288,35 @@ const fetchUserBookmarks = async (userId: string) => {
 };
 
 const fetchPersonalizedRecommendations = async (userProfile: any) => {
+  // Always provide fallback recommendations
+  const fallbackRecommendations = [
+    `Latest ${userProfile.department} research updates and clinical guidelines`,
+    'Evidence-based treatment protocols and best practices',
+    'Continuing medical education opportunities in your specialty',
+    'Peer-reviewed journal articles and systematic reviews'
+  ];
+
   if (!isOpenAIAvailable()) {
-    return [
-      `Latest ${userProfile.department} research updates`,
-      'Evidence-based treatment guidelines',
-      'Clinical decision support tools',
-      'Continuing medical education opportunities',
-      'Peer-reviewed journal articles'
-    ];
+    console.log('Using fallback recommendations - OpenAI not available');
+    return fallbackRecommendations;
   }
 
   try {
-    return await openAIService!.generatePersonalizedRecommendations(userProfile);
-  } catch (error) {
-    console.error('Error fetching recommendations:', error);
-    return [];
+    const recommendations = await openAIService!.generatePersonalizedRecommendations(userProfile);
+    
+    // Return AI recommendations if successful, otherwise fallback
+    return recommendations.length > 0 ? recommendations : fallbackRecommendations;
+  } catch (error: any) {
+    console.warn('OpenAI recommendations failed, using fallback:', error.message);
+    
+    // Show user-friendly message for different error types
+    if (error.message.includes('limit exceeded')) {
+      toast.error('AI recommendations temporarily unavailable - daily limit reached');
+    } else if (error.message.includes('rate limit')) {
+      toast.error('AI recommendations temporarily unavailable - please try again in a few minutes');
+    }
+    
+    return fallbackRecommendations;
   }
 };
 
@@ -434,21 +448,42 @@ export const useGenerateContent = () => {
   return useMutation({
     mutationFn: async ({ type, params }: { type: 'news' | 'drugs' | 'cases', params?: any }) => {
       if (!isOpenAIAvailable()) {
-        throw new Error('OpenAI service not available');
-      } 
+        throw new Error('AI content generation not available - using existing database content');
+      }
 
-      switch (type) {
-        case 'news':
-          return await fetchMedicalNews({ categories: [params?.specialty] });
-        case 'drugs':
-          return await fetchDrugInsights({ categories: [params?.indication] });
-        case 'cases':
-          return await fetchCaseStudies({ 
-            categories: [params?.specialty],
-            difficulty: params?.difficulty
-          });
-        default:
-          throw new Error(`Unknown content type: ${type}`);
+      try {
+        // Always try to fetch from database first (this includes AI-generated content)
+        switch (type) {
+          case 'news':
+            return await fetchMedicalNews({ categories: [params?.specialty] });
+          case 'drugs':
+            return await fetchDrugInsights({ categories: [params?.indication] });
+          case 'cases':
+            return await fetchCaseStudies({ 
+              categories: [params?.specialty],
+              difficulty: params?.difficulty
+            });
+          default:
+            throw new Error(`Unknown content type: ${type}`);
+        }
+      } catch (error: any) {
+        // If AI generation fails, still return existing database content
+        console.warn(`Content generation for ${type} failed:`, error.message);
+        
+        // Return basic content from database without AI enhancement
+        switch (type) {
+          case 'news':
+            return await fetchMedicalNews({ categories: [params?.specialty] });
+          case 'drugs':
+            return await fetchDrugInsights({ categories: [params?.indication] });
+          case 'cases':
+            return await fetchCaseStudies({ 
+              categories: [params?.specialty],
+              difficulty: params?.difficulty
+            });
+          default:
+            return [];
+        }
       }
     },
     onSuccess: (data, variables) => {
@@ -467,10 +502,19 @@ export const useGenerateContent = () => {
           }), data);
           break;
       }
-      toast.success('New content generated successfully!');
+      
+      if (isOpenAIAvailable()) {
+        toast.success('Content refreshed with latest AI insights!');
+      } else {
+        toast.success('Content refreshed from database!');
+      }
     },
     onError: (error: any) => {
-      toast.error(error.message || 'Failed to generate content');
+      if (error.message.includes('limit exceeded')) {
+        toast.error('Daily AI limit reached - showing existing content');
+      } else {
+        toast.error('Content refresh failed - please try again');
+      }
     },
   });
 };

@@ -52,22 +52,26 @@ export const useConversations = () => {
       
       if (error) throw error;
       
-      // Fetch unread counts for each conversation
-      const unreadCounts = await Promise.all(
-        (conversations || []).map(async (conv) => {
-          const { count } = await supabase
-            .from('private_messages')
-            .select('*', { count: 'exact', head: true })
-            .eq('conversation_id', conv.id)
-            .neq('sender_id', profile.id)
-            .is('read_at', null);
-          
-          return { conversationId: conv.id, count: count || 0 };
-        })
-      );
+      // Batch unread counts in ONE query to avoid flooding the network
+      const conversationIds = (conversations || []).map(c => c.id);
+      let unreadCountByConversation: Record<string, number> = {};
+      if (conversationIds.length > 0) {
+        const { data: unreadRows, error: unreadErr } = await supabase
+          .from('private_messages')
+          .select('conversation_id')
+          .in('conversation_id', conversationIds)
+          .neq('sender_id', profile.id)
+          .is('read_at', null);
+        if (!unreadErr && unreadRows) {
+          unreadCountByConversation = unreadRows.reduce((acc: Record<string, number>, row: any) => {
+            acc[row.conversation_id] = (acc[row.conversation_id] || 0) + 1;
+            return acc;
+          }, {});
+        }
+      }
       
       // Transform data to match component interface
-      return (conversations || []).map(conv => {
+      const mapped = (conversations || []).map(conv => {
         // Find the other participant
         const otherParticipantId = conv.participant_ids.find((id: string) => id !== profile.id);
         const otherParticipant = allDoctors?.find(d => d.id === otherParticipantId) || null;
@@ -76,7 +80,7 @@ export const useConversations = () => {
         const lastMessage = conv.last_message?.[0] || null;
         
         // Get unread count
-        const unreadCount = unreadCounts.find(uc => uc.conversationId === conv.id)?.count || 0;
+        const unreadCount = unreadCountByConversation[conv.id] || 0;
         
         return {
           id: conv.id,
@@ -89,10 +93,28 @@ export const useConversations = () => {
           createdAt: conv.created_at
         };
       });
+
+      // De-duplicate conversations by participant pair (historical duplicates cleanup in UI)
+      const byPair = new Map<string, any>();
+      for (const conv of mapped) {
+        const key = [...conv.participantIds].sort().join('|');
+        const existing = byPair.get(key);
+        if (!existing) {
+          byPair.set(key, conv);
+        } else {
+          // keep the most recent conversation
+          const existingTs = existing.lastMessageAt || existing.createdAt;
+          const thisTs = conv.lastMessageAt || conv.createdAt;
+          if (new Date(thisTs).getTime() > new Date(existingTs).getTime()) {
+            byPair.set(key, conv);
+          }
+        }
+      }
+      return Array.from(byPair.values());
     },
     enabled: !!profile?.id,
-    staleTime: 1 * 60 * 1000, // 1 minute
-    refetchInterval: 30 * 1000, // Refetch every 30 seconds
+    staleTime: 5 * 60 * 1000, // 5 minutes
+    refetchInterval: 5 * 60 * 1000, // Refetch every 5 minutes to reduce load
   });
 };
 
@@ -113,7 +135,7 @@ export const useMessages = (conversationId: string) => {
       
       if (error) throw error;
       
-      return data || [];
+      return (data as any as Message[]) || [];
     },
     enabled: !!conversationId && !!profile?.id,
     staleTime: 10 * 1000, // 10 seconds
@@ -178,7 +200,7 @@ export const useUnreadMessages = () => {
     },
     enabled: !!profile?.id,
     staleTime: 30 * 1000, // 30 seconds
-    refetchInterval: 60 * 1000, // Refetch every minute
+    refetchInterval: 5 * 60 * 1000, // Refetch every 5 minutes
   });
 };
 
@@ -188,7 +210,7 @@ export const useCreateConversation = () => {
   const { profile } = useAuthStore();
   
   return useMutation({
-    mutationFn: async ({ participantIds }: { participantIds: string[] }) => {
+    mutationFn: async ({ participantIds }: { participantIds: string[] }): Promise<Conversation> => {
       if (!profile?.id) throw new Error('User not authenticated');
       
       // Sort participant IDs to ensure consistent order for comparison
@@ -232,9 +254,9 @@ export const useCreateConversation = () => {
           return {
             id: existingConversation.id,
             participantIds: existingConversation.participant_ids,
-            otherParticipant,
+            otherParticipant: otherParticipant as Doctor | null,
             lastMessage: null,
-            lastMessageAt: existingConversation.last_message_at,
+            lastMessageAt: existingConversation.last_message_at || '',
             unreadCount: 0,
             isTyping: false,
             createdAt: existingConversation.created_at
@@ -256,9 +278,9 @@ export const useCreateConversation = () => {
         return {
           id: conversation.id,
           participantIds: conversation.participant_ids,
-          otherParticipant,
+          otherParticipant: otherParticipant as Doctor | null,
           lastMessage: null,
-          lastMessageAt: conversation.last_message_at,
+          lastMessageAt: conversation.last_message_at || '',
           unreadCount: 0,
           isTyping: false,
           createdAt: conversation.created_at
@@ -289,9 +311,9 @@ export const useCreateConversation = () => {
       return {
         id: newConv.id,
         participantIds: newConv.participant_ids,
-        otherParticipant,
+        otherParticipant: otherParticipant as Doctor | null,
         lastMessage: null,
-        lastMessageAt: newConv.last_message_at,
+        lastMessageAt: newConv.last_message_at || '',
         unreadCount: 0,
         isTyping: false,
         createdAt: newConv.created_at
@@ -327,30 +349,39 @@ export const useSendMessage = () => {
       files?: File[];
     }) => {
       // First, upload any files
-      const fileUrls: string[] = [];
+      // We store STORAGE OBJECT PATHS (not public URLs). Rendering will use signed URLs.
+      const filePaths: string[] = [];
       
       if (files.length > 0) {
-        for (const file of files) {
+        console.log(`📤 Starting upload of ${files.length} file(s)...`);
+        
+        for (let i = 0; i < files.length; i++) {
+          const file = files[i];
           const fileExt = file.name.split('.').pop();
           const fileName = `${senderId}/${Date.now()}-${Math.random().toString(36).substring(2, 15)}.${fileExt}`;
+          
+          console.log(`📁 Uploading file ${i + 1}/${files.length}: ${file.name}`);
           
           const { data: uploadData, error: uploadError } = await supabase.storage
             .from('chat_attachments')
             .upload(fileName, file);
           
-          if (uploadError) throw uploadError;
+          if (uploadError) {
+            console.error(`❌ Upload failed for ${file.name}:`, uploadError);
+            throw new Error(`Failed to upload ${file.name}: ${uploadError.message}`);
+          }
           
-          const { data: { publicUrl } } = supabase.storage
-            .from('chat_attachments')
-            .getPublicUrl(fileName);
-          
-          fileUrls.push(publicUrl);
+          console.log(`✅ File uploaded successfully: ${fileName}`);
+          // Store the object path; avoid generating public URLs for private buckets
+          filePaths.push(fileName);
         }
+        
+        console.log(`🎉 All ${files.length} files uploaded successfully`);
       }
       
-      // Create message with file URLs if any
+      // Create message with file PATHS if any (renderer will create signed URLs)
       const finalContent = files.length > 0 
-        ? isEncrypted ? encrypt(JSON.stringify(fileUrls)) : JSON.stringify(fileUrls)
+        ? isEncrypted ? encrypt(JSON.stringify(filePaths)) : JSON.stringify(filePaths)
         : content;
       
       const { data: message, error: messageError } = await supabase
@@ -367,15 +398,20 @@ export const useSendMessage = () => {
       
       if (messageError) throw messageError;
       
-      // Update conversation's last_message_at
-      const { error: updateError } = await supabase
-        .from('private_conversations')
-        .update({
-          last_message_at: new Date().toISOString()
-        })
-        .eq('id', conversationId);
-      
-      if (updateError) throw updateError;
+      // Update conversation's last_message_at (best-effort; don't block send on policy issues)
+      try {
+        const { error: updateError } = await supabase
+          .from('private_conversations')
+          .update({ last_message_at: new Date().toISOString() })
+          .eq('id', conversationId);
+        if (updateError) {
+          // Non-fatal: rely on messages query + invalidation to refresh UI ordering
+          // eslint-disable-next-line no-console
+          console.warn('last_message_at update skipped:', updateError.message);
+        }
+      } catch (e) {
+        // ignore
+      }
       
       return message;
     },
@@ -416,5 +452,70 @@ export const useMarkAsRead = () => {
       queryClient.invalidateQueries({ queryKey: chatKeys.conversations() });
       queryClient.invalidateQueries({ queryKey: chatKeys.unread() });
     }
+  });
+};
+
+// Delete a conversation
+export const useDeleteConversation = () => {
+  const queryClient = useQueryClient();
+  const { profile } = useAuthStore();
+  
+  return useMutation({
+    mutationFn: async ({ conversationId }: { conversationId: string }) => {
+      if (!profile?.id) throw new Error('User not authenticated');
+      
+      // First, verify the user is a participant in this conversation
+      const { data: conversation, error: fetchError } = await (supabase as any)
+        .from('private_conversations')
+        .select('participant_ids')
+        .eq('id', conversationId)
+        .single();
+      
+      if (fetchError) throw fetchError;
+      if (!conversation) throw new Error('Conversation not found');
+      
+      // Check if user is a participant
+      if (!conversation.participant_ids.includes(profile.id)) {
+        throw new Error('You are not authorized to delete this conversation');
+      }
+      
+      // Delete all messages in the conversation first
+      const { error: messagesError } = await (supabase as any)
+        .from('private_messages')
+        .delete()
+        .eq('conversation_id', conversationId);
+      
+      if (messagesError) throw messagesError;
+      
+      // Delete the conversation
+      const { error: conversationError } = await (supabase as any)
+        .from('private_conversations')
+        .delete()
+        .eq('id', conversationId);
+      
+      if (conversationError) throw conversationError;
+      
+      return { success: true, conversationId };
+    },
+    // Optimistically remove from cache so the UI updates instantly
+    onMutate: async ({ conversationId }) => {
+      await queryClient.cancelQueries({ queryKey: chatKeys.conversations() });
+      const prev = queryClient.getQueryData<any[]>(chatKeys.conversations());
+      if (prev) {
+        queryClient.setQueryData<any[]>(chatKeys.conversations(), prev.filter(c => c.id !== conversationId));
+      }
+      return { prev };
+    },
+    onError: (error: any, _vars, context) => {
+      if (context?.prev) {
+        queryClient.setQueryData(chatKeys.conversations(), context.prev);
+      }
+      toast.error(error.message || 'Failed to delete conversation');
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: chatKeys.conversations() });
+      queryClient.invalidateQueries({ queryKey: chatKeys.unread() });
+    },
+    
   });
 };

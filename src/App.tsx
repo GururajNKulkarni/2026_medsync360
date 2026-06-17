@@ -7,6 +7,7 @@ import { LoginForm } from './components/features/auth/LoginForm';
 import { OnboardingForm } from './components/features/onboarding';
 import { Messages } from './components/features/Messages';
 import { useAuthStore } from './store/authStore';
+import { setupGlobalErrorLogging } from './lib/logger';
 
 // Lazy load main route components
 const Dashboard = lazy(() => import('./components/features/dashboard/Dashboard').then(module => ({ default: module.Dashboard })));
@@ -160,11 +161,16 @@ function OnboardingRoute() {
 }
 
 function App() {
-  const { initialize, initialized } = useAuthStore();
+  const { initialize, initialized, profile } = useAuthStore();
 
   useEffect(() => {
     initialize();
   }, [initialize]);
+
+  // Global crash/perf error logging to Supabase (non-invasive)
+  useEffect(() => {
+    setupGlobalErrorLogging(profile?.id);
+  }, [profile?.id]);
 
   if (!initialized) {
     return (

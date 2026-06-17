@@ -148,7 +148,7 @@ WHERE tablename = 'objects' AND schemaname = 'storage';
 3. ⭐ **Test file upload** in the application
 
 ### **VERIFY - After Migration:**
-1. ✅ Run attachment diagnostics
+1. ✅ Verify attachment functionality
 2. ✅ Upload test file
 3. ✅ View file in referral details
 4. ✅ Confirm 0 errors in browser console

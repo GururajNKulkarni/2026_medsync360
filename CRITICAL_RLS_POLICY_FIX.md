@@ -195,14 +195,14 @@ WHERE tablename = 'objects' AND schemaname = 'storage';
 4. **✅ Test file upload** in referral form
 5. **✅ Check file appears** in referral details
 6. **✅ Test file preview/download** functionality
-7. **✅ Run attachment diagnostics** - should show green
+7. **✅ Verify attachment functionality** - should work properly
 
 ### **Expected Success Indicators:**
 - 🟢 No RLS policy errors
 - 🟢 Files upload successfully  
 - 🟢 Existing files become accessible
 - 🟢 File previews work properly
-- 🟢 Attachment diagnostics all green
+- 🟢 Attachment functionality working properly
 
 ---
 

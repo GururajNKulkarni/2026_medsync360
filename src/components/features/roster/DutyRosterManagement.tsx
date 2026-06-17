@@ -462,6 +462,20 @@ const DutyRosterManagement = () => {
     });
   }, [dutyToDelete, deleteDutyMutation]); 
 
+  // Memory leak detection - show warning if memory usage is growing rapidly
+  const memoryWarning = useMemo(() => {
+    if (memoryMonitorRef.current?.snapshots?.length >= 5) {
+      const first = memoryMonitorRef.current.snapshots[0];
+      const last = memoryMonitorRef.current.snapshots[memoryMonitorRef.current.snapshots.length - 1];
+      const growthRate = (last.usage - first.usage) / ((last.timestamp - first.timestamp) / 1000);
+      
+      if (growthRate > 1) { // More than 1MB/s growth
+        return `Memory leak detected: ${growthRate.toFixed(2)} MB/s growth rate`;
+      }
+    }
+    return null;
+  }, []);
+
   // Show error state with detailed information
   if (isError) {
     return (
@@ -488,20 +502,6 @@ const DutyRosterManagement = () => {
       </div>
     );
   }
-
-  // Memory leak detection - show warning if memory usage is growing rapidly
-  const memoryWarning = useMemo(() => {
-    if (memoryMonitorRef.current.snapshots.length >= 5) {
-      const first = memoryMonitorRef.current.snapshots[0];
-      const last = memoryMonitorRef.current.snapshots[memoryMonitorRef.current.snapshots.length - 1];
-      const growthRate = (last.usage - first.usage) / ((last.timestamp - first.timestamp) / 1000);
-      
-      if (growthRate > 1) { // More than 1MB/s growth
-        return `Memory leak detected: ${growthRate.toFixed(2)} MB/s growth rate`;
-      }
-    }
-    return null;
-  }, [memoryMonitorRef.current.snapshots]);
 
   return (
     <div className="space-y-6">
@@ -660,7 +660,7 @@ const DutyRosterManagement = () => {
               variant="outline"
               size="sm"
             >
-            )} 
+              <RefreshCw className="w-4 h-4" />
             </Button>
         </div>
       </Card>

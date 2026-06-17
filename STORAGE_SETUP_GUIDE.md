@@ -115,7 +115,7 @@ You should see:
 6. View the referral to confirm attachment displays correctly
 
 ### Step 3: Verify Database Records
-After creating a referral with attachments, run diagnostics again:
+After creating a referral with attachments, verify functionality:
 ```bash
 node scripts/database-diagnostics.js
 ```
