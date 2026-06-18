@@ -495,34 +495,29 @@ export const ReferralDetails: React.FC<ReferralDetailsProps> = ({
         }
       });
 
-      // If this is a transferred referral, fetch final diagnosis from the original referral
-      if (referral.transfer_parent_id) {
-        console.log('🔄 Step 1a: Fetching final diagnosis from original referral:', referral.transfer_parent_id);
-        try {
-          const { data: originalReferral, error: originalError } = await (supabase as any)
-            .from('referrals')
-            .select('final_diagnosis_category, final_diagnosis_details, final_diagnosis_timestamp, final_diagnosis_by')
-            .eq('id', referral.transfer_parent_id)
-            .single();
+      // The final diagnosis is recorded on the referral that was actually COMPLETED
+      // (this one), NOT on the parent it was transferred from. Fetch it fresh from
+      // this referral's DB row so a re-download always reflects the stored diagnosis.
+      try {
+        const { data: diagRow, error: diagErr } = await (supabase as any)
+          .from('referrals')
+          .select('final_diagnosis_category, final_diagnosis_details, final_diagnosis_timestamp, final_diagnosis_by')
+          .eq('id', referral.id)
+          .single();
 
-          if (originalError) {
-            console.error('❌ Error fetching original referral final diagnosis:', originalError);
-            throw new Error(`Failed to fetch original referral data: ${originalError.message}`);
-          } else if (originalReferral) {
-            finalDiagnosisData = {
-              category: originalReferral.final_diagnosis_category,
-              details: originalReferral.final_diagnosis_details,
-              timestamp: originalReferral.final_diagnosis_timestamp,
-              by: originalReferral.final_diagnosis_by
-            };
-            console.log('✅ Updated final diagnosis from original referral:', finalDiagnosisData);
-          } else {
-            console.warn('⚠️ No original referral found for transfer_parent_id:', referral.transfer_parent_id);
-          }
-        } catch (diagnosisError: any) {
-          console.error('❌ Critical error in final diagnosis fetch:', diagnosisError);
-          throw new Error(`Final diagnosis fetch failed: ${diagnosisError.message}`);
+        if (diagErr) {
+          console.error('❌ Error fetching final diagnosis:', diagErr);
+        } else if (diagRow) {
+          finalDiagnosisData = {
+            category: diagRow.final_diagnosis_category,
+            details: diagRow.final_diagnosis_details,
+            timestamp: diagRow.final_diagnosis_timestamp,
+            by: diagRow.final_diagnosis_by
+          };
+          console.log('✅ Final diagnosis fetched from completed referral:', finalDiagnosisData);
         }
+      } catch (diagnosisError: any) {
+        console.error('❌ Critical error in final diagnosis fetch:', diagnosisError);
       }
       
       // Step 1.5: Resolve final diagnosis user ID to user name
@@ -570,6 +565,21 @@ export const ReferralDetails: React.FC<ReferralDetailsProps> = ({
         throw new Error(`Medication trail processing failed: ${trailError.message}`);
       }
 
+      // Step 2.5: Count attachments across the whole chain (the in-memory referral
+      // object never carries attachments, so the report would otherwise show 0).
+      let chainAttachmentIds: string[] = [];
+      try {
+        const chainIds = Array.from(new Set(
+          (completeMedicationTrail as any[]).map((s: any) => s.referral_id).filter(Boolean)
+        ));
+        if (chainIds.length === 0) chainIds.push(referral.id);
+        const { data: atts } = await supabase
+          .from('referral_attachments').select('id').in('referral_id', chainIds);
+        chainAttachmentIds = ((atts as any[]) || []).map((a: any) => a.id as string);
+      } catch (attErr) {
+        console.error('❌ Attachment count fetch failed:', attErr);
+      }
+
       // Step 3: Determine final medication
       console.log('💊 Step 3: Determining final medication...');
       const finalMedication = medicationHistory.length > 0 
@@ -583,14 +593,15 @@ export const ReferralDetails: React.FC<ReferralDetailsProps> = ({
         referral: {
           ...referral,
           medicationGiven: referral.medicationGiven || 'No medication information available',
+          attachments: chainAttachmentIds,
           medication_history: medicationHistory
         },
         completionData: {
-          isPatientAttended: true, // Assume true for closed referrals
+          isPatientAttended: true, // closed referrals were attended
           updatedMedication: finalMedication,
           reasons: undefined,
-          completedAt: new Date().toISOString(),
-          completedBy: profile?.full_name || 'Unknown User',
+          completedAt: referral.end_time || new Date().toISOString(),
+          completedBy: finalDiagnosisData.by || profile?.full_name || 'Unknown User',
           finalDiagnosisCategory: finalDiagnosisData.category,
           finalDiagnosisDetails: finalDiagnosisData.details,
           finalDiagnosisTimestamp: finalDiagnosisData.timestamp,
