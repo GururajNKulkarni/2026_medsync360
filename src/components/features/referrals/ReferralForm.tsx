@@ -128,10 +128,10 @@ const urgencyOptions = [
     label: 'Normal',
     description: 'Standard priority',
     icon: FileText,
-    color: 'bg-neutral-500',
-    bgColor: 'bg-neutral-50',
-    textColor: 'text-neutral-700',
-    borderColor: 'border-neutral-200'
+    color: 'bg-green-500',
+    bgColor: 'bg-green-50',
+    textColor: 'text-green-700',
+    borderColor: 'border-green-200'
   }
 ];
 

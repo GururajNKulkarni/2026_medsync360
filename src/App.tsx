@@ -5,6 +5,7 @@ import toast, { Toaster } from 'react-hot-toast';
 import { Layout } from './components/layout/Layout';
 import { LoginForm } from './components/features/auth/LoginForm';
 import { SessionTimeoutModal } from './components/features/auth/SessionTimeoutModal';
+import { GlobalLoader } from './components/ui/GlobalLoader';
 import { OnboardingForm } from './components/features/onboarding';
 import { Messages } from './components/features/Messages';
 import { useAuthStore } from './store/authStore';
@@ -253,6 +254,7 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <Router>
         <div className="App">
+          <GlobalLoader />
           <SessionTimeoutManager />
           <AuthRecoveryManager />
           <Routes>
