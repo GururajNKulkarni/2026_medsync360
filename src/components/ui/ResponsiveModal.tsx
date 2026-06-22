@@ -114,7 +114,7 @@ const ResponsiveModal: React.FC<ResponsiveModalProps> = ({
               {(title || showCloseButton) && (
                 <div className={cn(
                   "flex items-center justify-between border-b border-gray-200 sticky top-0 z-10",
-                  "px-4 py-4 sm:px-6 sm:py-4 bg-gradient-to-r from-blue-50 to-indigo-50",
+                  "px-4 py-4 sm:px-6 sm:py-4 bg-gradient-to-r from-primary-50 to-success-50",
                   isMobile ? "rounded-t-2xl" : "rounded-t-xl"
                 )}>
                   {title && (

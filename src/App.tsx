@@ -9,7 +9,8 @@ import { GlobalLoader } from './components/ui/GlobalLoader';
 import { OnboardingForm } from './components/features/onboarding';
 import { Messages } from './components/features/Messages';
 import { useAuthStore } from './store/authStore';
-import { useSessionTimeout, SESSION_TIMEOUT_ENABLED } from './hooks/useSessionTimeout';
+import { useSessionTimeout } from './hooks/useSessionTimeout';
+import { usePreferences } from './store/preferencesStore';
 import { supabase } from './lib/supabase';
 import { setupGlobalErrorLogging } from './lib/logger';
 
@@ -26,19 +27,9 @@ const AIAssistant = lazy(() => Promise.resolve({ default: () => (
   </div>
 )}));
 
-const Analytics = lazy(() => Promise.resolve({ default: () => (
-  <div className="text-center py-12">
-    <h2 className="text-2xl font-bold text-neutral-900 mb-4">Analytics</h2>
-    <p className="text-neutral-600">Medical analytics dashboard coming soon...</p>
-  </div>
-)}));
+const Analytics = lazy(() => import('./components/features/analytics/Analytics').then(module => ({ default: module.Analytics })));
 
-const Settings = lazy(() => Promise.resolve({ default: () => (
-  <div className="text-center py-12">
-    <h2 className="text-2xl font-bold text-neutral-900 mb-4">Settings</h2>
-    <p className="text-neutral-600">User settings and preferences coming soon...</p>
-  </div>
-)}));
+const Settings = lazy(() => import('./components/features/settings/Settings').then(module => ({ default: module.Settings })));
 
 // Loading fallback component
 const LoadingFallback = React.memo(() => (
@@ -72,6 +63,7 @@ const queryClient = new QueryClient({
 // Idle session timeout: warns then signs the user out after inactivity.
 function SessionTimeoutManager() {
   const { user, signOut } = useAuthStore();
+  const sessionTimeoutEnabled = usePreferences((s) => s.sessionTimeoutEnabled);
 
   const handleTimeout = useCallback(async () => {
     await signOut();
@@ -79,12 +71,12 @@ function SessionTimeoutManager() {
   }, [signOut]);
 
   const { showWarning, secondsRemaining, stayLoggedIn } = useSessionTimeout({
-    // Disabled by default; toggle via VITE_SESSION_TIMEOUT_ENABLED.
-    enabled: SESSION_TIMEOUT_ENABLED && !!user,
+    // Toggleable from Settings; defaults to the VITE_SESSION_TIMEOUT_ENABLED flag.
+    enabled: sessionTimeoutEnabled && !!user,
     onTimeout: handleTimeout,
   });
 
-  if (!SESSION_TIMEOUT_ENABLED || !user) return null;
+  if (!sessionTimeoutEnabled || !user) return null;
 
   return (
     <SessionTimeoutModal
@@ -229,10 +221,16 @@ function OnboardingRoute() {
 
 function App() {
   const { initialize, initialized, profile } = useAuthStore();
+  const theme = usePreferences((s) => s.theme);
 
   useEffect(() => {
     initialize();
   }, [initialize]);
+
+  // Apply the selected theme by toggling the `dark` class on <html>.
+  useEffect(() => {
+    document.documentElement.classList.toggle('dark', theme === 'dark');
+  }, [theme]);
 
   // Global crash/perf error logging to Supabase (non-invasive)
   useEffect(() => {
