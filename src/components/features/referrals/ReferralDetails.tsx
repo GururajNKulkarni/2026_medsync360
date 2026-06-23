@@ -8,6 +8,7 @@ import {
   useMedicationHistory,
   useCompleteMedicationTrail,
   useTransferReferral,
+  fetchReferralChainTimeline,
 } from '../../../hooks/useReferrals';
 import { useQueryClient } from '@tanstack/react-query';
 import { cn } from '../../../lib/utils';
@@ -357,14 +358,15 @@ export const ReferralDetails: React.FC<ReferralDetailsProps> = ({
         
         // Generate Excel report with the completion data
         try {
-          // Fetch fresh medication history and complete trail
-          const [medicationHistoryResult, completeMedicationTrailResult] = await Promise.all([
+          // Fetch fresh medication history, complete trail, and per-stage chain timeline
+          const [medicationHistoryResult, completeMedicationTrailResult, chainTimeline] = await Promise.all([
             (supabase as any).rpc('get_medication_timeline', {
               p_referral_id: referral.id
             }),
             (supabase as any).rpc('get_complete_medication_trail', {
               p_referral_id: referral.id
-            })
+            }),
+            fetchReferralChainTimeline(referral.id)
           ]);
 
           const freshMedicationHistory = medicationHistoryResult.data;
@@ -407,9 +409,10 @@ export const ReferralDetails: React.FC<ReferralDetailsProps> = ({
               finalDiagnosisBy: completionData.finalDiagnosisCategory || completionData.finalDiagnosisDetails ? profile?.full_name || 'Unknown User' : undefined
             },
             transferHistory: transferHistory || [],
-            completeMedicationTrail: completeMedicationTrail || []
+            completeMedicationTrail: completeMedicationTrail || [],
+            chainTimeline
           };
-          
+
           await generateReferralExcelReport(reportData);
           
           toast.success('Excel report generated successfully!');
@@ -621,6 +624,9 @@ export const ReferralDetails: React.FC<ReferralDetailsProps> = ({
         throw new Error(`Medication trail processing failed: ${trailError.message}`);
       }
 
+      // Step 2.25: Per-stage chain timeline (full path + per-hop accept/close times)
+      const chainTimeline = await fetchReferralChainTimeline(referral.id);
+
       // Step 2.5: Count attachments across the whole chain (the in-memory referral
       // object never carries attachments, so the report would otherwise show 0).
       let chainAttachmentIds: string[] = [];
@@ -664,9 +670,10 @@ export const ReferralDetails: React.FC<ReferralDetailsProps> = ({
           finalDiagnosisBy: finalDiagnosisData.by
         },
         transferHistory: transferHistory || [],
-        completeMedicationTrail: completeMedicationTrail
+        completeMedicationTrail: completeMedicationTrail,
+        chainTimeline
       };
-      
+
       console.log('📄 Final report data structure:', {
         referralId: reportData.referral.id,
         patientName: reportData.referral.patientName,

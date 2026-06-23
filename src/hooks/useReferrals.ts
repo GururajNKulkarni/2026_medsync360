@@ -484,6 +484,40 @@ const fetchTransferHistory = async (referralId: string) => {
   }
 };
 
+// Fetch the full per-stage chain timeline (holder + received/accepted/transferred/
+// ended per hop) for the completion report. Uses the SECURITY DEFINER RPC so a
+// downstream doctor sees upstream stages past RLS. Returns [] on any failure so a
+// report can still be generated with the single-hop fallback.
+export const fetchReferralChainTimeline = async (
+  referralId: string
+): Promise<import('../types/referral.types').ReferralChainTimelineNode[]> => {
+  try {
+    const { data, error } = await (supabase as any).rpc('get_referral_chain_timeline', {
+      p_referral_id: referralId,
+    });
+    if (error) {
+      console.error('Error fetching referral chain timeline:', error);
+      return [];
+    }
+    return ((data as any[]) || []).map((n: any) => ({
+      hopLevel: n.hop_level,
+      referralId: n.referral_id,
+      fromDoctor: n.from_doctor || 'Unknown',
+      fromDepartment: n.from_department || '',
+      toDoctor: n.to_doctor || 'Unknown',
+      toDepartment: n.to_department || '',
+      receivedAt: n.received_at,
+      acceptedAt: n.accepted_at,
+      transferredAt: n.transferred_at,
+      endedAt: n.ended_at,
+      status: n.status,
+    }));
+  } catch (e) {
+    console.error('Error fetching referral chain timeline:', e);
+    return [];
+  }
+};
+
 // Custom hooks for medication history
 export const useMedicationHistory = (referralId: string) => {
   return useQuery({

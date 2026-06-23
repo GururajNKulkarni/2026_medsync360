@@ -1,6 +1,11 @@
 import * as XLSX from 'xlsx';
 import { format } from 'date-fns';
-import type { Referral, CompletedReferralData, TransferHistory, CompleteMedicationTrail } from '../types/referral.types';
+import type { Referral, CompletedReferralData, TransferHistory, CompleteMedicationTrail, ReferralChainTimelineNode } from '../types/referral.types';
+
+// Format a timestamp for the report, or a dash when absent.
+function fmtTs(ts?: string | null): string {
+  return ts ? format(new Date(ts), 'MMM d, yyyy - h:mm a') : '—';
+}
 
 function formatTimeAMPM(time: string): string {
   if (!time) return '';
@@ -26,7 +31,7 @@ export const generateReferralExcelReport = async (data: CompletedReferralData): 
     patientName: data.referral?.patientName
   });
 
-  const { referral, completionData, transferHistory, completeMedicationTrail } = data;
+  const { referral, completionData, transferHistory, completeMedicationTrail, chainTimeline } = data;
   
   // Validate required data
   if (!referral) {
@@ -47,7 +52,7 @@ export const generateReferralExcelReport = async (data: CompletedReferralData): 
   try {
     // --- 1. Data Preparation ---
     console.log('📋 Step 1: Building report data...');
-    const reportData = buildReportData(referral, completionData, transferHistory, completeMedicationTrail);
+    const reportData = buildReportData(referral, completionData, transferHistory, completeMedicationTrail, chainTimeline);
     console.log('✅ Report data built successfully, rows:', reportData.length);
 
     // --- 2. Worksheet Creation ---
@@ -124,7 +129,7 @@ export const generateReferralExcelReport = async (data: CompletedReferralData): 
 };
 
 // Helper function to structure the report data
-function buildReportData(referral: Referral, completionData: any, transferHistory: TransferHistory[] = [], completeMedicationTrail: CompleteMedicationTrail[] = []): any[][] {
+function buildReportData(referral: Referral, completionData: any, transferHistory: TransferHistory[] = [], completeMedicationTrail: CompleteMedicationTrail[] = [], chainTimeline: ReferralChainTimelineNode[] = []): any[][] {
   console.log('🔧 === BUILD REPORT DATA START ===');
   console.log('📋 Input validation:', {
     hasReferral: !!referral,
@@ -214,6 +219,60 @@ function buildReportData(referral: Referral, completionData: any, transferHistor
       ? departmentPath.join(' → ')
       : [referral.fromDepartment, referral.department].filter(Boolean).join(' → ');
 
+    // --- REFERRAL PATH rows ---
+    // With a chain timeline we show the FULL doctor path (origin → every stage);
+    // otherwise fall back to the single from/to of this referral.
+    const hasChain = chainTimeline.length > 0;
+    let referralPathRows: any[][];
+    if (hasChain) {
+      const origin = chainTimeline[0];
+      const last = chainTimeline[chainTimeline.length - 1];
+      const fullPath = [
+        `${origin.fromDoctor} (${origin.fromDepartment})`,
+        ...chainTimeline.map(n => `${n.toDoctor} (${n.toDepartment})`),
+      ].join('  →  ');
+      referralPathRows = [
+        ['REFERRAL PATH', ''],
+        ['Full Path:', fullPath],
+        ['Originating Doctor:', `${origin.fromDoctor} (${origin.fromDepartment})`],
+        ['Final Doctor:', `${last.toDoctor} (${last.toDepartment})`],
+        ['Total Stages:', chainTimeline.length.toString()],
+        [],
+      ];
+    } else {
+      referralPathRows = [
+        ['REFERRAL PATH', ''],
+        ['From Department:', referral.fromDepartment],
+        ['From Doctor:', referral.fromDoctor],
+        ['To Department:', referral.department],
+        ['To Doctor:', referral.doctor],
+        [],
+      ];
+    }
+
+    // --- TIMELINE per-stage rows ---
+    // One block per stage (holder): Received / Accepted / Transferred (mid-chain)
+    // or Completed (final/closed stage). Falls back to a single accepted line.
+    let stageTimelineRows: any[][];
+    if (hasChain) {
+      stageTimelineRows = chainTimeline.flatMap((n, i) => {
+        const isClosed = n.status === 'Closed' || !!n.endedAt;
+        return [
+          [`Stage ${i + 1} — ${n.toDoctor} (${n.toDepartment})`, ''],
+          ['   Received:', fmtTs(n.receivedAt)],
+          ['   Accepted:', fmtTs(n.acceptedAt)],
+          isClosed
+            ? ['   Completed:', fmtTs(n.endedAt)]
+            : ['   Transferred:', fmtTs(n.transferredAt)],
+          ['', ''],
+        ];
+      });
+    } else {
+      stageTimelineRows = [
+        ['Referral Accepted:', referral.acceptedAt ? fmtTs(referral.acceptedAt) : 'N/A'],
+      ];
+    }
+
     // Create the exact 2-column format matching the screenshot
     const data = [
       // Report Header
@@ -241,13 +300,8 @@ function buildReportData(referral: Referral, completionData: any, transferHistor
       ['Status:', referral.status],
       [], // Spacer
 
-      // REFERRAL PATH Section
-      ['REFERRAL PATH', ''],
-      ['From Department:', referral.fromDepartment],
-      ['From Doctor:', referral.fromDoctor],
-      ['To Department:', referral.department],
-      ['To Doctor:', referral.doctor],
-      [], // Spacer
+      // REFERRAL PATH Section (full chain when available)
+      ...referralPathRows,
 
       // MEDICATION DETAILS Section
       ['MEDICATION DETAILS', ''],
@@ -299,11 +353,11 @@ function buildReportData(referral: Referral, completionData: any, transferHistor
       ['Diagnosed By:', completionData.finalDiagnosisBy || 'N/A'],
       [], // Spacer
 
-      // TIMELINE Section
+      // TIMELINE Section (per-stage received/accepted/transferred|completed)
       ['TIMELINE', ''],
-      ['Referral Created:', originalCreatedAt ? format(new Date(originalCreatedAt), 'MMMM d, yyyy - h:mm a') : 'N/A'],
-      ['Referral Accepted:', referral.acceptedAt ? format(new Date(referral.acceptedAt), 'MMMM d, yyyy - h:mm a') : 'N/A'],
-      ['Referral Completed:', completionData.completedAt ? format(new Date(completionData.completedAt), 'MMMM d, yyyy - h:mm a') : 'N/A'],
+      ['Referral Created:', originalCreatedAt ? `${format(new Date(originalCreatedAt), 'MMMM d, yyyy - h:mm a')}${hasChain ? `  (${chainTimeline[0].fromDoctor})` : ''}` : 'N/A'],
+      [], // Spacer before stage blocks
+      ...stageTimelineRows,
       ['Departments Visited:', departmentsVisited || 'N/A'],
       ['Total Transfers:', totalTransfers.toString()],
       ['Total Duration:', originalCreatedAt && completionData.completedAt ? calculateDuration(originalCreatedAt, completionData.completedAt) : 'N/A'],

@@ -188,6 +188,22 @@ export interface DeclineReason {
   description: string;
 }
 
+// One node (stage) of the transfer chain, with that stage's holder and timing.
+// Powers the report's full Referral Path + per-stage Timeline (get_referral_chain_timeline).
+export interface ReferralChainTimelineNode {
+  hopLevel: number;
+  referralId: string;
+  fromDoctor: string;       // the node's from_user (chain root = the creator)
+  fromDepartment: string;
+  toDoctor: string;         // the node's to_user = the doctor who held this stage
+  toDepartment: string;
+  receivedAt?: string;      // created_at — when this stage's holder received it
+  acceptedAt?: string;      // start_time — when they accepted
+  transferredAt?: string;   // when they transferred it onward (Transferred stages)
+  endedAt?: string;         // end_time — when they closed it (final/Closed stage)
+  status: string;
+}
+
 export interface CompletedReferralData {
   referral: Referral;
   completionData: {
@@ -203,4 +219,8 @@ export interface CompletedReferralData {
   };
   transferHistory: TransferHistory[];
   completeMedicationTrail: CompleteMedicationTrail[];
+  // Optional: full per-stage chain timeline. When present the report renders the
+  // full Referral Path + per-stage Timeline; when absent it falls back to the
+  // single-hop from/to + single timeline (keeps bulk export / older callers working).
+  chainTimeline?: ReferralChainTimelineNode[];
 }
