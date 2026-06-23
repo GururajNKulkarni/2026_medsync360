@@ -513,216 +513,129 @@ export const ReferralDetails: React.FC<ReferralDetailsProps> = ({
     });
   };
 
+  // Assemble the full CompletedReferralData for a CLOSED referral. Shared by the
+  // Excel and PDF download paths so both always carry identical data (diagnosis,
+  // medication trail, per-stage chain timeline, chain-wide attachment count).
+  const assembleClosedReportData = async (): Promise<CompletedReferralData> => {
+    // Final diagnosis: recorded on THIS completed referral's row (not the parent it
+    // was transferred from) — fetch fresh so a re-download reflects what's stored.
+    let finalDiagnosisData = {
+      category: (referral as any).final_diagnosis_category || referral.finalDiagnosisCategory,
+      details: (referral as any).final_diagnosis_details || referral.finalDiagnosisDetails,
+      timestamp: (referral as any).final_diagnosis_timestamp || referral.finalDiagnosisTimestamp,
+      by: (referral as any).final_diagnosis_by || referral.finalDiagnosisBy,
+    };
+    try {
+      const { data: diagRow, error: diagErr } = await (supabase as any)
+        .from('referrals')
+        .select('final_diagnosis_category, final_diagnosis_details, final_diagnosis_timestamp, final_diagnosis_by')
+        .eq('id', referral.id)
+        .single();
+      if (!diagErr && diagRow) {
+        finalDiagnosisData = {
+          category: diagRow.final_diagnosis_category,
+          details: diagRow.final_diagnosis_details,
+          timestamp: diagRow.final_diagnosis_timestamp,
+          by: diagRow.final_diagnosis_by,
+        };
+      }
+    } catch (e) {
+      console.error('Final diagnosis fetch failed:', e);
+    }
+
+    // Resolve a diagnosis user-id to a display name.
+    if (finalDiagnosisData.by && typeof finalDiagnosisData.by === 'string' && finalDiagnosisData.by.includes('-')) {
+      try {
+        const { data: userData } = await (supabase as any)
+          .from('users').select('full_name').eq('id', finalDiagnosisData.by).single();
+        if (userData) finalDiagnosisData.by = userData.full_name;
+      } catch (e) {
+        console.error('Diagnosis user resolve failed:', e);
+      }
+    }
+
+    // Complete medication trail (whole chain).
+    const { data: trailData, error: trailError } = await (supabase as any)
+      .rpc('get_complete_medication_trail', { p_referral_id: referral.id });
+    if (trailError) throw new Error(`Medication trail fetch failed: ${trailError.message}`);
+    const completeMedicationTrail = trailData || [];
+
+    // Per-stage chain timeline (full path + per-hop accept/close times).
+    const chainTimeline = await fetchReferralChainTimeline(referral.id);
+
+    // Chain-wide attachment count.
+    let chainAttachmentIds: string[] = [];
+    try {
+      const chainIds = Array.from(new Set(
+        (completeMedicationTrail as any[]).map((s: any) => s.referral_id).filter(Boolean)
+      ));
+      if (chainIds.length === 0) chainIds.push(referral.id);
+      const { data: atts } = await supabase
+        .from('referral_attachments').select('id').in('referral_id', chainIds);
+      chainAttachmentIds = ((atts as any[]) || []).map((a: any) => a.id as string);
+    } catch (attErr) {
+      console.error('Attachment count fetch failed:', attErr);
+    }
+
+    const finalMedication = medicationHistory.length > 0
+      ? medicationHistory[medicationHistory.length - 1].medication_text
+      : referral.medicationGiven;
+
+    return {
+      referral: {
+        ...referral,
+        medicationGiven: referral.medicationGiven || 'No medication information available',
+        attachments: chainAttachmentIds,
+        medication_history: medicationHistory,
+      },
+      completionData: {
+        isPatientAttended: true, // closed referrals were attended
+        updatedMedication: finalMedication,
+        reasons: undefined,
+        completedAt: referral.end_time || new Date().toISOString(),
+        completedBy: finalDiagnosisData.by || profile?.full_name || 'Unknown User',
+        finalDiagnosisCategory: finalDiagnosisData.category,
+        finalDiagnosisDetails: finalDiagnosisData.details,
+        finalDiagnosisTimestamp: finalDiagnosisData.timestamp,
+        finalDiagnosisBy: finalDiagnosisData.by,
+      },
+      transferHistory: transferHistory || [],
+      completeMedicationTrail,
+      chainTimeline,
+    };
+  };
+
   // Handle on-demand Excel report download for closed referrals
   const [isDownloading, setIsDownloading] = useState(false);
   const handleDownloadReport = async () => {
-    console.log('🚀 === EXCEL REPORT GENERATION START ===');
-    console.log('📋 Referral ID:', referral.id);
-    console.log('👤 User Profile:', profile);
-    console.log('📊 Initial Data:', {
-      medicationHistoryLength: medicationHistory.length,
-      transferHistoryLength: transferHistory?.length || 0,
-      referralStatus: referral.status,
-      hasTransferParent: !!referral.transfer_parent_id
-    });
-
     try {
       setIsDownloading(true);
-      console.log('⏳ Loading state set to true');
-      
-      // Step 1: Handle final diagnosis data
-      console.log('📋 Step 1: Processing final diagnosis data...');
-      let finalDiagnosisData = {
-        category: (referral as any).final_diagnosis_category || referral.finalDiagnosisCategory,
-        details: (referral as any).final_diagnosis_details || referral.finalDiagnosisDetails,
-        timestamp: (referral as any).final_diagnosis_timestamp || referral.finalDiagnosisTimestamp,
-        by: (referral as any).final_diagnosis_by || referral.finalDiagnosisBy
-      };
-      console.log('📋 Initial final diagnosis data:', finalDiagnosisData);
-      console.log('📋 Raw referral diagnosis fields:', {
-        snake_case: {
-          category: (referral as any).final_diagnosis_category,
-          details: (referral as any).final_diagnosis_details,
-          timestamp: (referral as any).final_diagnosis_timestamp,
-          by: (referral as any).final_diagnosis_by
-        },
-        camelCase: {
-          category: referral.finalDiagnosisCategory,
-          details: referral.finalDiagnosisDetails,
-          timestamp: referral.finalDiagnosisTimestamp,
-          by: referral.finalDiagnosisBy
-        }
-      });
-
-      // The final diagnosis is recorded on the referral that was actually COMPLETED
-      // (this one), NOT on the parent it was transferred from. Fetch it fresh from
-      // this referral's DB row so a re-download always reflects the stored diagnosis.
-      try {
-        const { data: diagRow, error: diagErr } = await (supabase as any)
-          .from('referrals')
-          .select('final_diagnosis_category, final_diagnosis_details, final_diagnosis_timestamp, final_diagnosis_by')
-          .eq('id', referral.id)
-          .single();
-
-        if (diagErr) {
-          console.error('❌ Error fetching final diagnosis:', diagErr);
-        } else if (diagRow) {
-          finalDiagnosisData = {
-            category: diagRow.final_diagnosis_category,
-            details: diagRow.final_diagnosis_details,
-            timestamp: diagRow.final_diagnosis_timestamp,
-            by: diagRow.final_diagnosis_by
-          };
-          console.log('✅ Final diagnosis fetched from completed referral:', finalDiagnosisData);
-        }
-      } catch (diagnosisError: any) {
-        console.error('❌ Critical error in final diagnosis fetch:', diagnosisError);
-      }
-      
-      // Step 1.5: Resolve final diagnosis user ID to user name
-      if (finalDiagnosisData.by && typeof finalDiagnosisData.by === 'string' && finalDiagnosisData.by.includes('-')) {
-        console.log('🔄 Step 1.5: Resolving diagnosis user ID to name:', finalDiagnosisData.by);
-        try {
-          const { data: userData, error: userError } = await (supabase as any)
-            .from('users')
-            .select('full_name')
-            .eq('id', finalDiagnosisData.by)
-            .single();
-
-          if (userError) {
-            console.error('❌ Error fetching user name:', userError);
-          } else if (userData) {
-            finalDiagnosisData.by = userData.full_name;
-            console.log('✅ Resolved diagnosis user name:', userData.full_name);
-          }
-        } catch (userResolveError: any) {
-          console.error('❌ Critical error resolving diagnosis user:', userResolveError);
-          // Keep the original ID if resolution fails
-        }
-      }
-      
-      // Step 2: Fetch complete medication trail
-      console.log('💊 Step 2: Fetching complete medication trail...');
-      let completeMedicationTrail: any[] = [];
-      try {
-        const { data: completeMedicationTrailData, error: trailError } = await (supabase as any).rpc('get_complete_medication_trail', {
-          p_referral_id: referral.id
-        });
-
-        if (trailError) {
-          console.error('❌ Error fetching complete medication trail:', trailError);
-          throw new Error(`Medication trail fetch failed: ${trailError.message}`);
-        }
-
-        completeMedicationTrail = completeMedicationTrailData || [];
-        console.log('✅ Complete medication trail fetched:', {
-          count: completeMedicationTrail.length,
-          data: completeMedicationTrail.slice(0, 2) // Show first 2 entries for debugging
-        });
-      } catch (trailError: any) {
-        console.error('❌ Critical error in medication trail fetch:', trailError);
-        throw new Error(`Medication trail processing failed: ${trailError.message}`);
-      }
-
-      // Step 2.25: Per-stage chain timeline (full path + per-hop accept/close times)
-      const chainTimeline = await fetchReferralChainTimeline(referral.id);
-
-      // Step 2.5: Count attachments across the whole chain (the in-memory referral
-      // object never carries attachments, so the report would otherwise show 0).
-      let chainAttachmentIds: string[] = [];
-      try {
-        const chainIds = Array.from(new Set(
-          (completeMedicationTrail as any[]).map((s: any) => s.referral_id).filter(Boolean)
-        ));
-        if (chainIds.length === 0) chainIds.push(referral.id);
-        const { data: atts } = await supabase
-          .from('referral_attachments').select('id').in('referral_id', chainIds);
-        chainAttachmentIds = ((atts as any[]) || []).map((a: any) => a.id as string);
-      } catch (attErr) {
-        console.error('❌ Attachment count fetch failed:', attErr);
-      }
-
-      // Step 3: Determine final medication
-      console.log('💊 Step 3: Determining final medication...');
-      const finalMedication = medicationHistory.length > 0 
-        ? medicationHistory[medicationHistory.length - 1].medication_text 
-        : referral.medicationGiven;
-      console.log('💊 Final medication determined:', finalMedication);
-
-      // Step 4: Build report data structure
-      console.log('📄 Step 4: Building report data structure...');
-      const reportData: CompletedReferralData = {
-        referral: {
-          ...referral,
-          medicationGiven: referral.medicationGiven || 'No medication information available',
-          attachments: chainAttachmentIds,
-          medication_history: medicationHistory
-        },
-        completionData: {
-          isPatientAttended: true, // closed referrals were attended
-          updatedMedication: finalMedication,
-          reasons: undefined,
-          completedAt: referral.end_time || new Date().toISOString(),
-          completedBy: finalDiagnosisData.by || profile?.full_name || 'Unknown User',
-          finalDiagnosisCategory: finalDiagnosisData.category,
-          finalDiagnosisDetails: finalDiagnosisData.details,
-          finalDiagnosisTimestamp: finalDiagnosisData.timestamp,
-          finalDiagnosisBy: finalDiagnosisData.by
-        },
-        transferHistory: transferHistory || [],
-        completeMedicationTrail: completeMedicationTrail,
-        chainTimeline
-      };
-
-      console.log('📄 Final report data structure:', {
-        referralId: reportData.referral.id,
-        patientName: reportData.referral.patientName,
-        medicationHistoryCount: reportData.referral.medication_history?.length || 0,
-        transferHistoryCount: reportData.transferHistory.length,
-        completeMedicationTrailCount: reportData.completeMedicationTrail.length,
-        hasFinalDiagnosis: !!(reportData.completionData.finalDiagnosisCategory || reportData.completionData.finalDiagnosisDetails)
-      });
-
-      // Step 5: Generate Excel report
-      console.log('📊 Step 5: Calling generateReferralExcelReport...');
+      const reportData = await assembleClosedReportData();
       await generateReferralExcelReport(reportData);
-      console.log('✅ Excel report generation completed successfully!');
-      
       toast.success('Excel report downloaded successfully!');
-      console.log('🎉 === EXCEL REPORT GENERATION SUCCESS ===');
-      
     } catch (error: any) {
-      console.error('💥 === EXCEL REPORT GENERATION FAILED ===');
-      console.error('❌ Error Type:', error.constructor.name);
-      console.error('❌ Error Message:', error.message);
-      console.error('❌ Error Stack:', error.stack);
-      console.error('❌ Referral Context:', {
-        referralId: referral.id,
-        referralStatus: referral.status,
-        patientName: referral.patientName,
-        hasTransferParent: !!referral.transfer_parent_id,
-        transferParentId: referral.transfer_parent_id
-      });
-      
-      // More specific error messages
-      let userMessage = 'Failed to generate report';
-      if (error.message.includes('Final diagnosis fetch failed')) {
-        userMessage = 'Failed to fetch referral diagnosis data';
-      } else if (error.message.includes('Medication trail')) {
-        userMessage = 'Failed to fetch medication history';
-      } else if (error.message.includes('buildReportData')) {
-        userMessage = 'Failed to process report data';
-      } else if (error.message.includes('XLSX')) {
-        userMessage = 'Failed to generate Excel file';
-      }
-      
-      toast.error(`${userMessage}: ${error.message}`);
-      console.error('🚨 User notified with error message:', userMessage);
-      
+      console.error('❌ Excel report generation failed:', error);
+      toast.error(`Failed to generate report: ${error?.message || 'Unknown error'}`);
     } finally {
       setIsDownloading(false);
-      console.log('🔄 Loading state reset to false');
-      console.log('🏁 === EXCEL REPORT GENERATION END ===');
+    }
+  };
+
+  // Handle on-demand branded PDF report download for closed referrals.
+  // pdfExport (html2pdf.js) is lazy-loaded so it stays out of the main bundle.
+  const [isDownloadingPdf, setIsDownloadingPdf] = useState(false);
+  const handleDownloadPdf = async () => {
+    try {
+      setIsDownloadingPdf(true);
+      const reportData = await assembleClosedReportData();
+      const { generateReferralPdfReport } = await import('../../../utils/pdfExport');
+      await generateReferralPdfReport(reportData);
+      toast.success('PDF report downloaded successfully!');
+    } catch (error: any) {
+      console.error('❌ PDF report generation failed:', error);
+      toast.error(`Failed to generate PDF: ${error?.message || 'Unknown error'}`);
+    } finally {
+      setIsDownloadingPdf(false);
     }
   };
 
@@ -1233,27 +1146,46 @@ export const ReferralDetails: React.FC<ReferralDetailsProps> = ({
           </Button>
         )}
         
-        {/* Download Report button for closed referrals */}
+        {/* Download buttons for closed referrals */}
         {referral.status === 'Closed' && (
-          <Button
-            onClick={handleDownloadReport}
-            disabled={isDownloading}
-            className="flex-1 bg-gradient-to-r from-green-600 to-green-500"
-          >
-            {isDownloading ? (
-              <>
-                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2" />
-                Generating...
-              </>
-            ) : (
-              <>
-                <Download size={16} className="mr-2" />
-                Download Report
-              </>
-            )}
-          </Button>
+          <>
+            <Button
+              onClick={handleDownloadReport}
+              disabled={isDownloading}
+              className="flex-1 bg-gradient-to-r from-green-600 to-green-500"
+            >
+              {isDownloading ? (
+                <>
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2" />
+                  Generating...
+                </>
+              ) : (
+                <>
+                  <Download size={16} className="mr-2" />
+                  Download Excel
+                </>
+              )}
+            </Button>
+            <Button
+              onClick={handleDownloadPdf}
+              disabled={isDownloadingPdf}
+              className="flex-1 bg-gradient-to-r from-rose-600 to-red-500"
+            >
+              {isDownloadingPdf ? (
+                <>
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2" />
+                  Generating...
+                </>
+              ) : (
+                <>
+                  <FileText size={16} className="mr-2" />
+                  Download PDF
+                </>
+              )}
+            </Button>
+          </>
         )}
-        
+
         {/* Cancel button always visible */}
         <Button
           variant="outline"

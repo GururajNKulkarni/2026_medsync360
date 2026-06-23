@@ -65,15 +65,22 @@ The `original_file_name` insert bug silently dropped **every** attachment DB row
 
 - [ ] Duty Roster at ~30 doctors — calendar overflow/grouping/filter design. Revisit *with* user (see memory: roster-scaling-concern).
 
-## 8. Optional feature — PDF discharge report alongside Excel
+## 8. PDF discharge report alongside Excel — BUILT (demo), improvements pending
 
-Offer a **branded PDF** version of the completion report as a second download option next to the existing Excel (same content/format — see the CEO sample in `docs/ceo/referral-completion-report.pdf`).
+**Done (2026-06-23):** branded "CEO-format" PDF via `src/utils/pdfExport.ts` (`generateReferralPdfReport`), lazy-loaded `html2pdf.js`, "Download PDF" button beside "Download Excel" in `ReferralDetails` (closed referrals). Both share `assembleClosedReportData()` so PDF and Excel carry identical data. Renders the approved CEO design with the full multi-stage path + per-stage timeline. Quick-patched for the demo: legible stage labels, centered Medication Details, `avoid[]` page-break selectors so cards don't ghost across the seam.
 
-- **Effort: ~0.5–1 day (Small–Medium).** Low risk — the report data (`CompletedReferralData`: referral, completionData, transferHistory, completeMedicationTrail) is already assembled and shared, so no new data plumbing.
-- **Work:** new `src/utils/pdfExport.ts` (`generateReferralPdfReport(data)`); add a "Download PDF" button beside Excel in the close flow (`ReferralManagement.tsx`) and the re-download (`ReferralDetails.tsx`); add one lazy-loaded dependency.
-- **DECIDED (per user): use the exact CEO-sample format.** Render the existing `docs/ceo/referral-completion-report.html` template via `html2pdf.js`, populated with the live referral's data. Pixel-identical to the sample; image-based PDF (text not selectable — acceptable for a discharge document). ~½ day.
-- _(Alternative, only if searchable text is later required: `@react-pdf/renderer` / `pdfmake`, ~1.5–2 days, layout rebuilt — would not be a pixel match.)_
-- **Cautions:** keep it lazy-loaded (bundle already ~1.6 MB); reuse the `page-break-inside: avoid` CSS for clean multi-page splits.
+### 8a. PDF improvements (deferred — image-based html2pdf has hit its ceiling)
+The demo PDF is **image-based** (html2canvas rasterizes the HTML). That brings inherent limits we should fix for production:
+- [ ] **Switch to a real-text engine** — `@react-pdf/renderer` (crisp + selectable + searchable text, reliable multi-page flow), **or** server-side **headless Chrome in a Supabase Edge Function** (pixel-perfect *and* real text; pairs with the planned "move OpenAI/secrets server-side" work). Recommended: react-pdf for client-only, Edge Chrome if we're already standing up Edge Functions. ~1.5–2 days (react-pdf) / ~2–3 days (Edge Chrome incl. infra).
+- [ ] **Long-content robustness (the "1000-word" case)** — a single very long field (chief complaint, medication note) currently sits in an unbreakable card box and can overflow. A text engine reflows it; html2pdf cannot. This is the main reason to switch.
+- [ ] **Text quality** — image-based text is soft even at scale 3 and not selectable/searchable; a text engine fixes this for free.
+- [ ] **Path layout for 5+ doctors** — the horizontal node row gets cramped beyond ~4 stages; consider wrapping or a vertical path for long chains.
+- [ ] Once switched, drop the `html2pdf.js` dependency and the rasterization workarounds.
+
+### 8b. Share report via WhatsApp (requested, deferred)
+- [ ] **Primary (mobile):** Web Share API (`navigator.share({ files: [pdf] })`) — shares the real PDF to WhatsApp/Email/any app; falls back to plain download on unsupported desktop browsers. No hosting, nothing leaves the user's control automatically.
+- [ ] **Desktop link option (only if needed):** upload PDF to Supabase storage → short-expiry **signed URL** → `https://wa.me/?text=<url>` (wa.me cannot attach files, only a link).
+- [ ] **⚠️ Governance:** the PDF contains PHI. Make sharing user-initiated only (never automatic), use short-expiry signed links, and add an audit log of who shared what. Decide policy before enabling the link path.
 
 ## 9. Feature — attach evidence without transferring
 
