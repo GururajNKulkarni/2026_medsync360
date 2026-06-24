@@ -1,5 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { motion } from 'framer-motion';
+import { useHospitals } from '../../../hooks/useHospitals';
 import { 
   User, 
   Camera, 
@@ -44,18 +45,6 @@ interface ValidationErrors {
   [key: string]: string;
 }
 
-const MEDICAL_COLLEGES = [
-  'BMC Chitradurga', 'BMCRI Bengaluru', 'BIMS Belagavi', 'BIMS Bidar', 'CIMS Chamarajanagar',
-  'CIMS Chikkaballapur', 'CIMS Chikkamagaluru', 'CMC Chitradurga', 'BRAMC Bengaluru',
-  'ESIC MC Bengaluru', 'ESIC MC Gulbarga', 'FMMC Mangaluru', 'GIMS Gadag', 'GIMS Gulbarga',
-  'HIMS Haveri', 'HIMS Hassan', 'JNMC Belagavi', 'JJMMC Davangere', 'KIMS Karwar',
-  'KIMS Hubli', 'KMC Manipal', 'KMC Mangaluru', 'KIMS Kodagu', 'KIMS Koppal',
-  'KSHEMA Mangaluru', 'KVGMC Dakshina Kannada', 'MRMC Kalaburagi', 'MIMS Mandya',
-  'MSRMC Bengaluru', 'MVJMC Bengaluru Rural', 'MMC Mysuru', 'RIMS Raichur', 'SIMS Shimoga',
-  'ABVMC Bengaluru', 'SDUMC Kolar', 'SSMC Tumakuru', 'SJMC Bengaluru', 'VIMS Bellary',
-  'YIMS Yadgiri', 'YMC Mangaluru', 'Other'
-];
-
 const DEPARTMENTS = [
   'MD Anaesthesiology', 'MD Anatomy', 'MD Aviation Medicine', 'MD Biochemistry',
   'MD Blood Transfusion & Immunohematology', 'DM Cardiology', 'MD Community Medicine',
@@ -79,6 +68,7 @@ const GENDERS = ['Male', 'Female', 'Other'];
 
 export const OnboardingForm: React.FC = () => {
   const { user, signOut, updateProfile } = useAuthStore();
+  const { data: hospitals = [] } = useHospitals();
   const navigate = useNavigate();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -271,21 +261,27 @@ export const OnboardingForm: React.FC = () => {
         year_of_graduation: parseInt(formData.yearOfGraduation),
         graduated_from: formData.graduatedFrom,
         currently_working_at: formData.currentlyWorkingAt,
+        // Link to the real hospital record (multi-tenant scoping). New doctors stay
+        // approval_status='pending' (DB default) until their hospital superuser approves.
+        hospital_id: hospitals.find(h => h.name === formData.currentlyWorkingAt)?.id || null,
         secondary_phone: formData.secondaryPhone || null,
         profile_completed_at: new Date().toISOString()
-      };
+      } as any;
       
       // Use updateProfile which now handles upsert logic
       await updateProfile(profileData);
-      
-      toast.success('Profile completed successfully!');
-      
-      // Immediate navigation with performance optimization
-      navigate('/dashboard', { 
+
+      // New doctors are created as 'pending' and must be approved by their hospital
+      // superuser/platform owner — tell them clearly instead of implying they're in.
+      toast.success('Account created — your registration has been submitted for verification.', { duration: 6000 });
+
+      // The approval gate on /dashboard will route a pending user to the
+      // "Waiting for approval" screen.
+      navigate('/dashboard', {
         replace: true,
         state: { fromOnboarding: true }
       });
-      
+
     } catch (error: any) {
       console.error('Onboarding error:', error);
       
@@ -608,19 +604,16 @@ export const OnboardingForm: React.FC = () => {
                 </label>
                 <div className="relative">
                   <Building className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
-                  <select
+                  <input
+                    type="text"
                     value={formData.graduatedFrom}
                     onChange={(e) => handleInputChange('graduatedFrom', e.target.value)}
-                    className={`w-full pl-10 pr-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors appearance-none ${
+                    placeholder="College / university you graduated from"
+                    className={`w-full pl-10 pr-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors ${
                       errors.graduatedFrom ? 'border-red-300' : 'border-gray-300'
                     }`}
                     data-error={!!errors.graduatedFrom}
-                  >
-                    <option value="">Select college</option>
-                    {MEDICAL_COLLEGES.map(college => (
-                      <option key={college} value={college}>{college}</option>
-                    ))}
-                  </select>
+                  />
                 </div>
                 {errors.graduatedFrom && (
                   <p className="text-xs text-red-600 mt-1 flex items-center">
@@ -645,9 +638,9 @@ export const OnboardingForm: React.FC = () => {
                     }`}
                     data-error={!!errors.currentlyWorkingAt}
                   >
-                    <option value="">Select institution</option>
-                    {MEDICAL_COLLEGES.map(college => (
-                      <option key={college} value={college}>{college}</option>
+                    <option value="">Select hospital</option>
+                    {hospitals.map(h => (
+                      <option key={h.id} value={h.name}>{h.name}</option>
                     ))}
                   </select>
                 </div>

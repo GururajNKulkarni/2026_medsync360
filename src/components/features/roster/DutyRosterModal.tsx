@@ -1,37 +1,42 @@
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { 
-  Calendar, 
+import {
+  Calendar,
   Plus,
   Filter,
-  ChevronLeft, 
+  ChevronLeft,
   ChevronRight,
   Grid3X3,
   RefreshCw,
   Users,
-  Search, 
+  Search,
   User,
-  AlertCircle, 
+  AlertCircle,
   Loader,
   Trash2,
-  Database
+  Database,
+  Upload
 } from 'lucide-react';
 import { useAuthStore } from '../../../store/authStore';
 import { useResponsive } from '../../../hooks/useResponsive';
 import { supabase } from '../../../lib/supabase';
 import { Button } from '../../ui/Button';
-import { Card } from '../../ui/Card'; 
-import { ResponsiveModal } from '../../ui/ResponsiveModal'; 
+import { Card } from '../../ui/Card';
+import { ResponsiveModal } from '../../ui/ResponsiveModal';
 import { RosterCalendar } from './RosterCalendar';
 import { ScheduleDutyForm } from './ScheduleDutyForm';
 import { SwapDutyModal } from './SwapDutyModal';
-import { RosterFilters } from './RosterFilters'; 
+import { RosterFilters } from './RosterFilters';
 import { ExportRoster } from './ExportRoster';
 import { cn } from '../../../lib/utils';
 import { format, addWeeks, subWeeks, addMonths, subMonths } from 'date-fns';
 import { useDuties, useCreateDuty, useSwapDuty, useDeleteDuty, testDirectDbConnection } from '../../../hooks/useDuties';
 import toast from 'react-hot-toast'; 
 import type { Duty, DutySwapRequest, ShiftType } from '../../../types/duty.types';
+
+// Lazy-loaded: pulls in the xlsx library, which is otherwise unused by most
+// visitors of this always-mounted sidebar modal — keep it out of the eager bundle.
+const BulkUploadRosterModal = React.lazy(() => import('./BulkUploadRosterModal'));
 
 // Shortened department list for better UI performance
 const DEPARTMENTS = [
@@ -104,6 +109,7 @@ const DutyRosterModal: React.FC<DutyRosterModalProps> = ({ isOpen, onClose }) =>
   const [selectedDuty, setSelectedDuty] = useState<Duty | null>(null);
   const [showDeleteConfirmModal, setShowDeleteConfirmModal] = useState(false);
   const [dutyToDelete, setDutyToDelete] = useState<Duty | null>(null);
+  const [showBulkUploadModal, setShowBulkUploadModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [personalViewOnly, setPersonalViewOnly] = useState(false);
   const [selectedDepartments, setSelectedDepartments] = useState<string[]>([]);
@@ -121,7 +127,8 @@ const DutyRosterModal: React.FC<DutyRosterModalProps> = ({ isOpen, onClose }) =>
       setShowSwapModal(false);
       setShowDeleteConfirmModal(false);
       setSelectedDuty(null);
-      setDutyToDelete(null); 
+      setDutyToDelete(null);
+      setShowBulkUploadModal(false);
       setViewMode('monthly'); // Always use monthly view
     }
   }, [isOpen]); 
@@ -430,8 +437,21 @@ const DutyRosterModal: React.FC<DutyRosterModalProps> = ({ isOpen, onClose }) =>
               <Plus className="w-4 h-4 mr-2" />
               Schedule Duty
             </Button>
+
+            {/* Bulk upload — superusers only, scoped to their own hospital */}
+            {(profile as any)?.app_role === 'superuser' && (
+              <Button
+                onClick={() => setShowBulkUploadModal(true)}
+                variant="outline"
+                size="sm"
+                aria-label="Bulk upload duty roster from a file"
+              >
+                <Upload className="w-4 h-4 mr-2" />
+                Bulk Upload
+              </Button>
+            )}
           </div>
-          
+
           <div className="flex items-center gap-2">
             {/* Memory usage indicator */}
             {memoryUsage && (
@@ -696,6 +716,17 @@ const DutyRosterModal: React.FC<DutyRosterModalProps> = ({ isOpen, onClose }) =>
           onClose={() => setShowFiltersModal(false)}
         />
       </ResponsiveModal>
+
+      {/* Bulk Upload Modal */}
+      {showBulkUploadModal && (
+        <React.Suspense fallback={null}>
+          <BulkUploadRosterModal
+            isOpen={showBulkUploadModal}
+            onClose={() => setShowBulkUploadModal(false)}
+            shiftConfigs={SHIFT_CONFIGS}
+          />
+        </React.Suspense>
+      )}
     </ResponsiveModal>
   );
 };

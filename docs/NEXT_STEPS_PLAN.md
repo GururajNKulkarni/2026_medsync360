@@ -34,10 +34,16 @@ The `original_file_name` insert bug silently dropped **every** attachment DB row
 
 ## 3. Security hardening (production blockers)
 
-- [ ] **Move the OpenAI key server-side** — currently `VITE_OPENAI_API_KEY` ships in the browser bundle (`src/lib/openai.ts`). Put it behind a Supabase Edge Function.
-- [ ] Tighten `duty_roster` RLS — the `"Users can update shifts" USING (true)` policy lets any authenticated user update any duty. Scope it (e.g. same-department or involved parties) without breaking cross-doctor swaps.
-- [ ] Resolve the `security_definer_view` advisor ERROR (one view flagged) and the `rls_enabled_no_policy` on `app_logs`.
-- [ ] Audit the two RPCs we made `SECURITY DEFINER` once more against the auth guard (already guarded; confirm no enumeration risk).
+_Augmented 2026-06-23 from a full codebase scan + live Supabase advisors (172 findings: 1 ERROR, 1 INFO, 170 WARN)._
+
+- [ ] **Move the OpenAI key server-side** — currently `VITE_OPENAI_API_KEY` ships in the browser bundle (`src/lib/openai.ts`). Put it behind a Supabase Edge Function. (`lib/openai.ts` also has ~20 console statements.)
+- [ ] **Fix the `security_definer_view` ERROR** — view `public.unread_per_conversation` runs with the creator's permissions and bypasses caller RLS (privilege-escalation footgun). Recreate `security_invoker` or drop. [linter ref](https://supabase.com/docs/guides/database/database-linter?lint=0010_security_definer_view)
+- [ ] **Pin `search_path` on 60 functions** (`function_search_path_mutable`) — batch migration adding `SET search_path = public, pg_temp`. Our recent chain RPCs already do this; the 60 older ones don't.
+- [ ] Tighten `duty_roster` RLS — `"Users can update shifts" USING (true)` lets any authenticated user update any duty (`rls_policy_always_true`). Scope it (same-dept / involved parties), or fold into the admin/RBAC feature (§10).
+- [ ] `rls_enabled_no_policy` on `app_logs` — RLS on but no policy = inaccessible via RLS; confirm intended (logger uses it).
+- [ ] **Client-side "encryption" is obfuscation, not protection** — `lib/encryption.ts` uses `VITE_ENCRYPTION_KEY`, which ships in the bundle, so anyone with the bundle can decrypt. Don't claim real HIPAA-grade encryption until keys are server-side. Decide: real server-side field encryption, or drop the claim.
+- [ ] Enable leaked-password protection in Supabase Auth (`auth_leaked_password_protection`, currently off) — one toggle.
+- [ ] Confirm RLS covers every table exposed via pg_graphql to anon/authenticated (19+19 `pg_graphql_*_table_exposed` notices). The `*_security_definer_function_executable` notices (33+33) are expected for our guarded RPCs — spot-check the guards.
 
 ## 4. Testing & CI (currently none)
 
@@ -49,9 +55,15 @@ The `original_file_name` insert bug silently dropped **every** attachment DB row
 
 ## 5. Code quality / performance
 
-- [ ] Triage lint — hundreds of pre-existing `@typescript-eslint/no-explicit-any`. Decide: bulk-disable rule, or fix incrementally. Keep new code clean.
-- [ ] Code-split the bundle — `index` chunk is ~1.6 MB (gzip ~415 KB). Lazy-load heavy routes; the xlsx static+dynamic import warning can be resolved by choosing one.
-- [ ] Remove confirmed dead components (e.g. `DutyRosterManagement`, `DutyRosterPerformanceMonitor` if unreferenced).
+_Augmented 2026-06-23 from the codebase scan._
+
+- [ ] **Gate `console.*` behind `import.meta.env.DEV`** (route through `lib/logger.ts`) — **372 console statements across 43 files** ship to prod and leak PHI/IDs to the browser console (`useReferrals.ts` 73, `excelExport.ts` 36, `ReferralDetails.tsx` 28, `DutyRosterManagement.tsx` 26, `MessageThread.tsx` 24). High-value, low-risk. *(Fast win.)*
+- [ ] **Stop swallowing errors on clinical writes** — the systemic catch→`console.error`→continue pattern that hid the attachment-insert bug for ~11 months. Any failed write of clinical data must surface a toast. Sweep referrals/medication/duty write paths. *(Applied to the transfer-attachment path; rest pending.)*
+- [ ] Triage lint / `any` — **142 `any` across 31 files** (`ReferralDetails` 38, `useReferrals` 15) on top of the pre-existing `no-explicit-any` flood. Decide bulk-disable vs. incremental; keep new code clean.
+- [ ] **Split the god-components** — `ReferralDetails.tsx` (~1,300 lines) and `useReferrals.ts` do too much; hard to test/maintain.
+- [ ] **Prune diagnostic/dev cruft** — components `DutyRosterDiagnostics`, `DutyRosterPerformanceMonitor`, `lib/checkAccounts.ts`, and ~30 `diagnose_* / test_* / fix_*` SQL functions still in the **production DB**. Remove to shrink the attack/maintenance surface.
+- [ ] Code-split the bundle — `index` chunk ~1.6 MB (gzip ~415 KB). Lazy-load heavy routes; xlsx static+dynamic import warning (pick one). html2pdf is already lazy.
+- [ ] **UI: sweep render-conditionals for "hide-when-empty" bugs** — sections that vanish instead of showing an empty state (the Attachments-header regression class). Standardize on empty states + consistent error toasts.
 
 ## 6. Other modules (we haven't validated these)
 
@@ -90,7 +102,15 @@ Today a doctor can attach files only at **referral creation** and **during a tra
 - [ ] RLS note: the existing INSERT policy only allows `from_user_id = auth.uid()`. The *holder* of a transferred referral is `to_user_id`, not `from_user_id` — so this needs either a policy update (allow `to_user_id`) or a `SECURITY DEFINER` RPC with an auth guard (same pattern as the chain RPCs). Decide which.
 - [ ] Effort: ~0.5 day. Surfaces automatically in the existing chain-attachments UI once rows exist.
 
+## 10. Feature — hospital admin / coordinator (delegated data entry)
+
+A hospital coordinator/admin who manages the **Duty Roster** and creates/manages **Referrals on behalf of senior doctors** (who won't enter data themselves). Investigated 2026-06-23: today there is **no access-control role** (`users.role` is clinical rank only — PG/SR/House/Consultant) and **no hospital/tenant table** (single-hospital). Referral creation is locked to `from_user_id = auth.uid()`, so acting-on-behalf needs admin-checked `SECURITY DEFINER` RPCs + an `entered_by` audit stamp.
+
+- **Leaning Option B (RBAC + delegation, single hospital, ~1 week):** separate `app_role` (`doctor/coordinator/admin`), admin section (doctor list, create-referral-for, roster grid), full audit (`created_by` + `on_behalf_of`), and replace the loose `duty_roster USING(true)` RLS with role-aware policies. Design `app_role` so hospital scoping (Option C) can layer on later.
+- _Option A (~2–3 days): `is_admin` flag + "on behalf of" picker + 2 RPCs. Option C (~2–3 weeks): full multi-hospital `hospitals` table + `hospital_id` everywhere + per-hospital scoped RLS + admin onboarding._
+- ⚠️ This expands PHI access (admin sees others' referrals) — audit every on-behalf action.
+
 ---
 
 ### Suggested order for the next session
-1. Push report fixes (#0) → 2. Rotate keys (#0) → 3. Referral regression pass (#1) → 4. duty_roster RLS + OpenAI server-side (#3) → 5. CI + a few tests (#4).
+1. Push report fixes (#0) → 2. Rotate keys + OpenAI server-side (#0, #3) → 3. Quick security wins: `security_definer_view` ERROR + console-gating (#3, #5) → 4. Referral regression pass (#1) → 5. Admin/coordinator RBAC (#10, also fixes duty RLS) → 6. CI + a few tests (#4).

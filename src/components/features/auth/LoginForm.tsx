@@ -1,12 +1,10 @@
 import React from 'react';
 import { useState, useEffect } from 'react';
 import { Mail, Loader2, Lock, Eye, EyeOff, LogIn, Shield, Stethoscope, FileText, Brain, MessageCircle, Calendar, CheckCircle, ArrowRight, Moon, Sun, Sparkles, Zap, ClipboardCheck, X, Heart, Activity } from 'lucide-react';
-import { Video } from 'lucide-react';
 import { supabase, checkSupabaseConnection, signInWithGoogle } from '../../../lib/supabase';
 import { checkTestAccounts } from '../../../lib/checkAccounts';
 import medicalBg from '../assets/medical-bg.jpg';
 import type { AuthError } from '@supabase/supabase-js';
-import { Link } from 'react-router-dom';
 
 interface LoginFormProps {
   authError: string | null;
@@ -944,26 +942,6 @@ export default function LoginForm({ authError = null }: LoginFormProps) {
                   {showFullContent ? 'Hide Features' : 'Explore Features'}
                 </button>
               </div>
-            </div>
-          </div>
-          
-          {/* Watch Video Button */}
-          <div className="mt-6 text-center">
-            <div className="flex flex-col items-center">
-              <Link
-                to="/medsync360_final"
-                className={`inline-flex items-center gap-2 px-6 py-3 rounded-full text-white font-medium transition-all duration-300 transform hover:scale-105 ${
-                  darkMode 
-                    ? 'bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 shadow-lg' 
-                    : 'bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 shadow-lg'
-                }`}
-              >
-                <Video className="w-5 h-5" />
-                Watch Video
-              </Link>
-              <p className={`mt-2 text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-                From Excel to AI: The MedSync360 Journey
-              </p>
             </div>
           </div>
         </div>

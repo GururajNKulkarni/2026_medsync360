@@ -93,12 +93,19 @@ export const ReferralTransferModal: React.FC<ReferralTransferModalProps> = ({
         try {
           console.log(`Fetching doctors for department: ${formData.department}`);
           
-          const { data, error } = await supabase
+          const hospitalId = (profile as any)?.hospital_id;
+          let doctorsQuery = supabase
             .from('users')
             .select('id, full_name, role, kmc_number, department')
             .eq('department', formData.department)
             .eq('is_active', true)
-            .not('role', 'is', null)
+            .not('role', 'is', null);
+
+          if (hospitalId) {
+            doctorsQuery = doctorsQuery.eq('hospital_id', hospitalId);
+          }
+
+          const { data, error } = await doctorsQuery
             .order('full_name', { ascending: true })
             .abortSignal(abortController.signal);
 
