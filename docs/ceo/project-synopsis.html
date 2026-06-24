@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<style>
+  @page { size: A4; margin: 12mm 13mm 9mm 13mm; }
+  * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  body { font-family: 'Segoe UI', Arial, sans-serif; color:#1f2937; margin:0; font-size:10.5px; line-height:1.38; }
+  .page { page-break-after: always; }
+  .page:last-child { page-break-after: auto; }
+  .brand { display:flex; align-items:center; justify-content:space-between; border-bottom:3px solid #0e7490; padding-bottom:6px; margin-bottom:9px; }
+  .brand h1 { font-size:20px; margin:0; color:#0e7490; }
+  .brand .tag { font-size:9.5px; color:#64748b; text-align:right; }
+  h2 { font-size:12.5px; color:#0e7490; margin:10px 0 4px; border-left:4px solid #0d9488; padding-left:7px; }
+  h3 { font-size:11px; color:#0f172a; margin:7px 0 3px; }
+  p { margin:0 0 5px; }
+  ul { margin:0 0 5px; padding-left:16px; } li { margin-bottom:1.5px; }
+  .hero { background:linear-gradient(135deg,#0e7490,#0d9488); color:#fff; border-radius:9px; padding:11px 14px; margin-bottom:4px; }
+  .hero .big { font-size:15px; font-weight:700; }
+  .hero .sub { font-size:10.5px; opacity:.95; margin-top:3px; font-style:italic; }
+  .chips { margin-top:7px; } .chips span { display:inline-block; background:rgba(255,255,255,.18); border:1px solid rgba(255,255,255,.35); color:#fff; font-size:8.5px; padding:2px 7px; border-radius:10px; margin:2px 3px 0 0; }
+  .grid2 { display:flex; gap:10px; } .grid2 > div { flex:1; }
+  .card { background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:7px 10px; margin-bottom:6px; }
+  .card.live { background:#ecfdf5; border-color:#6ee7b7; }
+  .card h3 { margin-top:0; color:#0e7490; }
+  .card.live h3 { color:#065f46; }
+  .kpi { display:flex; gap:7px; margin:5px 0; }
+  .kpi div { flex:1; background:#0e7490; color:#fff; border-radius:8px; padding:6px; text-align:center; }
+  .kpi .v { font-size:14px; font-weight:800; display:block; }
+  .kpi .l { font-size:8px; opacity:.9; }
+  table { width:100%; border-collapse:collapse; font-size:9.5px; margin:3px 0 6px; }
+  th,td { border:1px solid #e2e8f0; padding:3px 6px; text-align:left; }
+  th { background:#0e7490; color:#fff; font-weight:600; }
+  .muted { color:#64748b; font-size:9.5px; }
+  .foot { font-size:8.5px; color:#94a3b8; text-align:center; border-top:1px solid #e2e8f0; padding-top:5px; margin-top:10px; }
+  .badge { display:inline-block; background:#0d9488; color:#fff; font-size:8px; padding:1px 6px; border-radius:8px; vertical-align:middle; }
+</style>
+</head>
+<body>
+
+<!-- PAGE 1 -->
+<div class="page">
+  <div class="brand">
+    <h1>MedSync<span style="color:#0d9488">360</span></h1>
+    <div class="tag">Project Synopsis · KDEM<br>By Dr. Basu &amp; Guru Hublikar</div>
+  </div>
+
+  <div class="hero">
+    <div class="big">All-in-one, AI-powered clinical workflow suite for Indian hospitals</div>
+    <div class="sub">"From paperwork to AI-powered efficiency — the future of Indian healthcare starts here."</div>
+    <div class="chips">
+      <span>React 18</span><span>TypeScript</span><span>Supabase</span><span>Tailwind CSS</span><span>OpenAI</span><span>End-to-End Encryption</span><span>HIPAA-aligned</span>
+    </div>
+  </div>
+
+  <h2>The Problem</h2>
+  <ul>
+    <li><b>Overwhelming administrative burden.</b> Paper / Excel-based work consumes 3+ hours daily per professional; ~50% of doctor time goes to paperwork instead of patient care.</li>
+    <li><b>Communication gaps.</b> Information silos across departments cause delayed referrals, missed follow-ups, duplicated effort and patient-safety risk.</li>
+    <li><b>Limited clinical context at the point of care.</b> Doctors manually piece together scattered records, leading to reactive rather than proactive care.</li>
+  </ul>
+
+  <h2>The Solution</h2>
+  <p>MedSync360 unifies the clinical workflow into one encrypted, doctor-validated platform: digital <b>duty rostering</b>, end-to-end <b>referral &amp; medication journeys</b>, a <b>one-click discharge summary</b>, private <b>1:1 chat</b>, and <b>analytics</b> — with AI features layered on a lightweight, progressive web app.</p>
+
+  <div class="grid2">
+    <div class="card live">
+      <h3>Live today <span class="badge">WORKING</span></h3>
+      <ul>
+        <li><b>Duty management</b> — weekly/calendar roster, shift types, department-wise organisation, self-service swaps with notifications.</li>
+        <li><b>Streamlined referrals</b> — create with full patient detail, send/receive, status management (Received, Acknowledged, Closed, Cancelled), file attachments.</li>
+        <li><b>Medication journey &amp; transfer chain</b> — complete, auditable history across every hop.</li>
+        <li><b>One-click discharge summary</b> — full diagnosis &amp; medication history exported.</li>
+        <li><b>1:1 encrypted chat</b> — real-time messaging, presence, file sharing.</li>
+        <li><b>Analytics</b> — disease-pattern &amp; referral-closure insights.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>Planned (AI roadmap)</h3>
+      <ul>
+        <li><b>AI Medical Transcription</b> — ICD-10 coding with structured clinical notes; ~50% time saved, with confidence scoring.</li>
+        <li><b>AI Medical Assistant</b> — clinical decision support, case assessment &amp; planning.</li>
+        <li><b>Research Insights</b> — curated healthcare news, drug innovation, case histories.</li>
+        <li><b>WhatsApp integration</b> — patient updates across the admission-to-discharge cycle.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="foot">MedSync360 — Project Synopsis (1/3) · Confidential</div>
+</div>
+
+<!-- PAGE 2 -->
+<div class="page">
+  <div class="brand">
+    <h1>MedSync<span style="color:#0d9488">360</span></h1>
+    <div class="tag">Project Synopsis · Market &amp; Model</div>
+  </div>
+
+  <h2>Mission &amp; Vision</h2>
+  <p><b>Mission:</b> deliver faster, smarter, and safer patient care using AI. <b>Vision:</b> grow MedSync360 into an AI "eco-system" across India that improves patient care and sets a model for national digital-health adoption.</p>
+
+  <h2>Target Users</h2>
+  <p>Medical institutions and private hospitals — <b>junior residents, consultants, and administrators.</b></p>
+
+  <h2>Market Size &amp; Dynamics</h2>
+  <div class="kpi">
+    <div><span class="v">$45B+</span><span class="l">Global healthcare-communication segment</span></div>
+    <div><span class="v">&#8377;3,500 Cr</span><span class="l">India TAM (540+ institutions, 60k+ hospitals)</span></div>
+    <div><span class="v">&#8377;215 Cr</span><span class="l">Karnataka SOM</span></div>
+    <div><span class="v">&#8377;18+ Cr</span><span class="l">Focus: 15&#8211;20 institutions in 5 yrs</span></div>
+  </div>
+  <p class="muted">Healthcare-communication market sits within a $350B+ healthcare-IT industry. India target spans ~50 govt. medical colleges and 5,000+ professionals.</p>
+
+  <h2>Business Model &amp; Pricing</h2>
+  <div class="grid2">
+    <div class="card">
+      <h3>B2B SaaS subscription</h3>
+      <ul>
+        <li>Institutional licenses (annual)</li>
+        <li>Per-user pricing (monthly / annual)</li>
+        <li>Enterprise (custom implementations)</li>
+        <li>API &amp; integration fees</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>Plans</h3>
+      <table>
+        <tr><th>Plan</th><th>Price / yr</th><th>Users</th></tr>
+        <tr><td>Basic</td><td>&#8377;3 L</td><td>up to 50</td></tr>
+        <tr><td>Professional</td><td>&#8377;6 L</td><td>up to 150</td></tr>
+        <tr><td>Enterprise</td><td>&#8377;12 L</td><td>unlimited</td></tr>
+      </table>
+      <p class="muted" style="margin:0;">Per-user: &#8377;750&#8211;1,250 / month depending on volume.</p>
+    </div>
+  </div>
+
+  <h2>Competitive Advantage</h2>
+  <table>
+    <tr><th>Product</th><th>Business model</th></tr>
+    <tr><td><b>Faster</b> — 90 days vs. 24-month enterprise rollouts</td><td><b>Doctor-validated</b> — co-created with practising physicians</td></tr>
+    <tr><td><b>Cheaper</b> — &#8377;12 L vs. &#8377;5&#8211;10 Cr enterprise solutions</td><td><b>Integrated</b> — all features in one system vs. multiple vendors</td></tr>
+    <tr><td><b>Simpler</b> — focused features, not overwhelming complexity</td><td><b>AI-first</b> — built with AI at the core, lightweight web app</td></tr>
+  </table>
+  <p class="muted">Global giants (Epic, Cerner: $4&#8211;5B; Nuance, Abridge: US-focused AI transcription) are high-cost and slow to deploy. India players (e.g. Practo) are patient-focused, not institutional, with limited AI — leaving a clear gap.</p>
+
+  <div class="foot">MedSync360 — Project Synopsis (2/3) · Confidential</div>
+</div>
+
+<!-- PAGE 3 -->
+<div class="page">
+  <div class="brand">
+    <h1>MedSync<span style="color:#0d9488">360</span></h1>
+    <div class="tag">Project Synopsis · Traction &amp; Ask</div>
+  </div>
+
+  <h2>Milestones</h2>
+  <div class="grid2">
+    <div class="card live">
+      <h3>Achieved</h3>
+      <ul>
+        <li>3 months of doctor interviews &amp; validation</li>
+        <li>MVP with core features built; beta-tested with real doctors</li>
+        <li>HIPAA-compliant architecture proven</li>
+        <li>5-member medical + technical team assembled</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>Next 6&#8211;36 months</h3>
+      <ul>
+        <li><b>6 mo:</b> full launch (private + govt.), 100+ active professionals, 95%+ AI accuracy</li>
+        <li><b>6&#8211;18 mo:</b> 10&#8211;15 colleges, &#8377;1 Cr ARR, team to 15+, hospital-chain partnerships</li>
+        <li><b>18&#8211;36 mo:</b> pan-India (50+ institutions), 2&#8211;3 state pilots, &#8377;10 Cr ARR</li>
+      </ul>
+    </div>
+  </div>
+
+  <h2>Intellectual Property</h2>
+  <p>First-to-file advantage in India for multilingual medical AI; 4 patents planned (provisional in 2&#8211;3 months):</p>
+  <ul>
+    <li>AI-powered integrated healthcare communication &amp; workflow management</li>
+    <li>Code-switching medical transcription for mixed-language environments</li>
+    <li>Lightweight AI documentation for resource-limited settings</li>
+    <li>AI-driven staff scheduling with predictive workflow integration</li>
+  </ul>
+
+  <h2>Team &amp; Advisory</h2>
+  <table>
+    <tr><th>Core team</th><th>Advisory board</th></tr>
+    <tr><td>Guru Hublikar — IT professional, 18+ yrs, start-up mentor</td><td>Dr. Nikhil V. K — Sr. Resident, Emergency Medicine, Fortis</td></tr>
+    <tr><td>Dr. Basalingappa R. M — PG, Preventive &amp; Social Medicine, BMC</td><td>Dr. Manjunath Bannur — Emergency Physician, HCA Healthcare, Texas</td></tr>
+    <tr><td>Mr. Gururaj K — AI programmer, 14 yrs, start-up mentor</td><td></td></tr>
+  </table>
+
+  <h2>Investment Ask</h2>
+  <p><b>&#8377;20 Lakhs (mentorship + funding) · 6 months · goal: validate the model with 3 paying colleges.</b></p>
+  <table>
+    <tr><th>Allocation</th><th>Use</th></tr>
+    <tr><td>40% (&#8377;8 L)</td><td>Product development &amp; patent filing — OpenAI API, cloud, mobile app, integrations</td></tr>
+    <tr><td>30% (&#8377;6 L)</td><td>Essential resources — UI/UX, DevOps, QA, medical consultant</td></tr>
+    <tr><td>20% (&#8377;4 L)</td><td>Operations &amp; infrastructure — legal/compliance, marketing, sales, office</td></tr>
+    <tr><td>10% (&#8377;2 L)</td><td>Emergency fund, travel, miscellaneous</td></tr>
+  </table>
+
+  <p class="muted" style="margin-top:10px;"><b>Investment thesis:</b> market-access innovation + execution excellence = sustainable healthcare transformation. &nbsp; Demo (2 min): https://youtu.be/XcqwYXdagNM &nbsp;·&nbsp; Contact: 98862 14944 / 96067 36966</p>
+
+  <div class="foot">MedSync360 — Project Synopsis (3/3) · Confidential</div>
+</div>
+
+</body>
+</html>
