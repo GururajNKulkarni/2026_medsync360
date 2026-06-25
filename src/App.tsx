@@ -17,18 +17,12 @@ const HospitalManagement = lazy(() => import('./components/features/hospitals/Ho
 const ApprovalsPage = lazy(() => import('./components/features/admin/ApprovalsPage').then(module => ({ default: module.ApprovalsPage })));
 const SettingsPage = lazy(() => import('./components/features/admin/SettingsPage').then(module => ({ default: module.SettingsPage })));
 const MedSyncVideo = lazy(() => import('./components/features/video/MedSyncVideo').then(module => ({ default: module.MedSyncVideo })));
+const Analytics = lazy(() => import('./components/features/analytics/AnalyticsPage').then(module => ({ default: module.AnalyticsPage })));
 
 const AIAssistant = lazy(() => Promise.resolve({ default: () => (
   <div className="text-center py-12">
     <h2 className="text-2xl font-bold text-neutral-900 mb-4">AI Medical Assistant</h2>
     <p className="text-neutral-600">AI-powered medical insights coming soon...</p>
-  </div>
-)}));
-
-const Analytics = lazy(() => Promise.resolve({ default: () => (
-  <div className="text-center py-12">
-    <h2 className="text-2xl font-bold text-neutral-900 mb-4">Analytics</h2>
-    <p className="text-neutral-600">Medical analytics dashboard coming soon...</p>
   </div>
 )}));
 
