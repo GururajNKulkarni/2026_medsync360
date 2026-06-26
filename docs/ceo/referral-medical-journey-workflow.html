@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<style>
+  @page { size: A4; margin: 13mm 13mm 11mm 13mm; }
+  * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  body { font-family: 'Segoe UI', Arial, sans-serif; color: #1f2937; margin: 0; font-size: 11.5px; line-height: 1.4; }
+  .brand { display:flex; align-items:center; justify-content:space-between; border-bottom:3px solid #0e7490; padding-bottom:8px; margin-bottom:12px; }
+  .brand h1 { font-size: 20px; margin:0; color:#0e7490; }
+  .brand .tag { font-size:10px; color:#64748b; }
+  .doc-title { font-size:15px; font-weight:700; color:#0f172a; margin:0 0 2px; }
+  .pill { display:inline-block; background:#0e7490; color:#fff; font-size:9px; padding:2px 7px; border-radius:10px; margin-left:6px; }
+  .doc-sub { font-size:10.5px; color:#64748b; margin:0 0 12px; }
+  .phase { border:1.5px solid #e2e8f0; border-radius:9px; padding:9px 11px; margin-bottom:9px; }
+  .phase-h { font-size:12px; font-weight:700; color:#0e7490; margin:0 0 7px; display:flex; align-items:center; gap:7px; }
+  .num { background:#0e7490; color:#fff; width:18px; height:18px; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-size:11px; }
+  .row { display:flex; gap:7px; align-items:center; flex-wrap:wrap; }
+  .box { background:#f0f9ff; border:1.4px solid #bae6fd; border-radius:7px; padding:6px 9px; flex:1; min-width:120px; }
+  .box b { color:#0c4a6e; display:block; font-size:11px; }
+  .box span { font-size:10px; color:#475569; }
+  .arrow { color:#0e7490; font-weight:800; font-size:15px; }
+  .dec { background:#fffbeb; border:1.4px solid #fcd34d; }
+  .dec b { color:#92400e; }
+  .red { background:#fef2f2; border-color:#fecaca; }
+  .red b { color:#991b1b; }
+  .green { background:#ecfdf5; border-color:#6ee7b7; }
+  .green b { color:#065f46; }
+  /* medication trail */
+  .trail { display:flex; gap:0; align-items:stretch; margin-top:4px; }
+  .tstep { flex:1; background:#0e7490; color:#fff; padding:7px 8px; position:relative; font-size:9.5px; margin-right:9px; border-radius:4px; }
+  .tstep:last-child { margin-right:0; }
+  .tstep:after { content:"\\25B6"; position:absolute; right:-9px; top:50%; transform:translateY(-50%); color:#0e7490; font-size:11px; }
+  .tstep:last-child:after { content:""; }
+  .tstep b { display:block; font-size:10px; margin-bottom:1px; }
+  .tstep.s2 { background:#0891b2; } .tstep.s2:after{color:#0891b2;}
+  .tstep.s3 { background:#b45309; } .tstep.s3:after{color:#b45309;}
+  .tstep.s4 { background:#7c3aed; } .tstep.s4:after{color:#7c3aed;}
+  .tstep.s5 { background:#0d9488; }
+  .twocol { display:flex; gap:10px; }
+  .twocol > div { flex:1; }
+  .panel { background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:9px 11px; margin-top:4px; }
+  .panel h3 { margin:0 0 5px; font-size:11.5px; color:#0e7490; }
+  .panel ul { margin:0; padding-left:15px; } .panel li { font-size:10px; margin-bottom:2px; }
+  .status { display:flex; gap:6px; align-items:center; flex-wrap:wrap; font-size:10px; margin-top:3px; }
+  .chip { padding:2px 8px; border-radius:10px; font-weight:600; }
+  .c-rx{background:#dbeafe;color:#1e40af;} .c-ack{background:#dcfce7;color:#166534;} .c-tr{background:#ede9fe;color:#5b21b6;} .c-cl{background:#e2e8f0;color:#334155;} .c-cx{background:#fee2e2;color:#991b1b;}
+  .foot { margin-top:10px; font-size:9px; color:#94a3b8; text-align:center; border-top:1px solid #e2e8f0; padding-top:6px; }
+</style>
+</head>
+<body>
+  <div class="brand">
+    <h1>MedSync<span style="color:#0d9488">360</span></h1>
+    <div class="tag">All-in-one clinical workflow suite · KDEM pitch companion</div>
+  </div>
+
+  <p class="doc-title">Referral &amp; Medication Journey Workflow <span class="pill">LIVE FEATURE</span></p>
+  <p class="doc-sub">A patient referral moves across doctors and departments while MedSync360 preserves the full clinical &amp; medication history end-to-end — with a one-click discharge report.</p>
+
+  <div class="phase">
+    <div class="phase-h"><span class="num">1</span> Referral Creation</div>
+    <div class="row">
+      <div class="box"><b>Capture patient</b><span>Name, age, IP no., admission date/time, complaint, history, exam</span></div>
+      <div class="arrow">&#8594;</div>
+      <div class="box"><b>Route it</b><span>Choose destination department &amp; doctor, set urgency</span></div>
+      <div class="arrow">&#8594;</div>
+      <div class="box"><b>Initial medication</b><span>Record meds given + attach files (images / PDF)</span></div>
+    </div>
+  </div>
+
+  <div class="phase">
+    <div class="phase-h"><span class="num">2</span> Receiver Action</div>
+    <div class="row">
+      <div class="box dec"><b>Accept or Decline?</b><span>Receiving doctor reviews the case</span></div>
+      <div class="arrow">&#8594;</div>
+      <div class="box green"><b>Accept</b><span>Status &#8594; Acknowledged; acceptance time stamped</span></div>
+      <div class="arrow">&#8594;</div>
+      <div class="box red"><b>Decline</b><span>Status &#8594; Cancelled with a recorded reason</span></div>
+    </div>
+  </div>
+
+  <div class="phase">
+    <div class="phase-h"><span class="num">3</span> Completion / Hand-off Decision</div>
+    <div class="row">
+      <div class="box"><b>Patient attended?</b><span>Yes &#8594; option to update medication</span></div>
+      <div class="arrow">&#8594;</div>
+      <div class="box dec"><b>Close or Transfer?</b><span>Doctor chooses the next action</span></div>
+      <div class="arrow">&#8594;</div>
+      <div class="box green"><b>Close</b><span>Final diagnosis &#8594; status Closed &#8594; Excel report</span></div>
+      <div class="arrow">&#8594;</div>
+      <div class="box s4" style="background:#f5f3ff;border:1.4px solid #ddd6fe;"><b style="color:#5b21b6">Transfer</b><span>Update meds &amp; reason &#8594; new doctor/dept</span></div>
+    </div>
+  </div>
+
+  <div class="phase">
+    <div class="phase-h"><span class="num">4</span> Transfer Chain — multi-hop, fully linked</div>
+    <div class="row">
+      <div class="box"><b>Dr A (origin)</b><span>creates &amp; prescribes</span></div>
+      <div class="arrow">&#8594;</div>
+      <div class="box"><b>Dr B</b><span>accepts, updates med, transfers</span></div>
+      <div class="arrow">&#8594;</div>
+      <div class="box"><b>Dr C</b><span>accepts, updates med, transfers</span></div>
+      <div class="arrow">&#8594;</div>
+      <div class="box green"><b>Dr D</b><span>completes &amp; discharges</span></div>
+    </div>
+    <div style="font-size:9.5px;color:#64748b;margin-top:5px;">Each hop is chained, so any doctor in the chain sees the <b>complete</b> upstream history — not just their own slice.</div>
+  </div>
+
+  <div class="phase">
+    <div class="phase-h"><span class="num">5</span> Complete Medication Journey (auto-assembled)</div>
+    <div class="trail">
+      <div class="tstep s1"><b>Created</b>Original prescription</div>
+      <div class="tstep s2"><b>Initial Set</b>Meds at creation</div>
+      <div class="tstep s3"><b>Updated on Transfer</b>Each hop's change</div>
+      <div class="tstep s4"><b>Received Transfer</b>Meds handed over</div>
+      <div class="tstep s5"><b>Completed</b>Final medication</div>
+    </div>
+    <div class="twocol" style="margin-top:8px;">
+      <div class="panel" style="margin-top:0;">
+        <h3>Excel discharge report (one click)</h3>
+        <ul>
+          <li>Patient &amp; referral details, full referral path</li>
+          <li>Every medication step with doctor, dept &amp; time</li>
+          <li>Trail summary: doctors &amp; departments involved</li>
+          <li>Final diagnosis + timeline (created &#8594; accepted &#8594; completed)</li>
+        </ul>
+      </div>
+      <div class="panel" style="margin-top:0;">
+        <h3>Status lifecycle</h3>
+        <div class="status">
+          <span class="chip c-rx">Received</span><span class="arrow">&#8594;</span>
+          <span class="chip c-ack">Acknowledged</span>
+        </div>
+        <div class="status" style="margin-top:6px;">
+          <span class="chip c-tr">Transferred</span>
+          <span class="chip c-cl">Closed</span>
+          <span class="chip c-cx">Cancelled</span>
+        </div>
+        <div style="font-size:9.5px;color:#64748b;margin-top:6px;">Encrypted, HIPAA-aligned. Sender &amp; receiver see role-appropriate views.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="foot">MedSync360 — Referral &amp; Medication Journey Workflow · Confidential · By Dr. Basu &amp; Guru Hublikar</div>
+</body>
+</html>

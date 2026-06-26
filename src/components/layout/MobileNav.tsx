@@ -1,16 +1,19 @@
 import React from 'react';
 import { motion } from 'framer-motion';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { 
-  Home, 
-  FileText, 
-  MessageSquare, 
-  Calendar, 
-  FlaskConical
+import {
+  Home,
+  FileText,
+  MessageSquare,
+  Calendar,
+  FlaskConical,
+  Building2,
+  ShieldCheck
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { useState } from 'react';
 import DutyRosterModal from '../features/roster/DutyRosterModal';
+import { useAuthStore } from '../../store/authStore';
 
 const mobileNavItemsBase = [
   { name: 'Dashboard', href: '/dashboard', icon: Home },
@@ -18,18 +21,33 @@ const mobileNavItemsBase = [
   { name: 'Private Chat', href: '/messages', icon: MessageSquare },
   { name: 'Roster', icon: Calendar },
   { name: 'Research', href: '/research-insight', icon: FlaskConical },
+  // Superuser + platform owner: approvals (mobile bottom bar entry).
+  { name: 'Approvals', href: '/approvals', icon: ShieldCheck, adminOnly: true },
+  // Platform-owner-only: onboard hospitals (mobile is the bottom bar — without
+  // this the owner could not reach /hospitals on a phone).
+  { name: 'Hospitals', href: '/hospitals', icon: Building2, platformOnly: true },
 ];
 
 const MobileNav: React.FC = () => {
   const location = useLocation();
+  const { profile } = useAuthStore();
   const navigate = useNavigate();
+  const appRole = (profile as any)?.app_role;
+  const isPlatform = appRole === 'platform';
+  const isAdmin = appRole === 'platform' || appRole === 'superuser';
   const [showRosterModal, setShowRosterModal] = useState(false);
 
-  // Create navigation with current state based on location
-  const mobileNavItems = mobileNavItemsBase.map(item => ({
-    ...item,
-    current: item.href ? location.pathname === item.href : false
-  }));
+  // Hide platform-only / admin-only items from regular doctors.
+  const mobileNavItems = mobileNavItemsBase
+    .filter(item => {
+      if ((item as any).platformOnly) return isPlatform;
+      if ((item as any).adminOnly) return isAdmin;
+      return true;
+    })
+    .map(item => ({
+      ...item,
+      current: item.href ? location.pathname === item.href : false
+    }));
 
   return (
     <motion.div 

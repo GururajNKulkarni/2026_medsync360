@@ -3,10 +3,12 @@ import { motion } from 'framer-motion';
 import { FileText, Calendar, Clock, AlertTriangle, CheckCircle, XCircle, Archive, Download, ExternalLink, Eye, File, FileImage, File as FilePdf, FileText as FileTextIcon, Shield, Tag, User, Building2, X, Stethoscope } from 'lucide-react';
 import { Button } from '../../ui/Button';
 import {
-  useReferralAttachments,
+  useChainAttachments,
   useTransferHistory,
   useMedicationHistory,
   useCompleteMedicationTrail,
+  useTransferReferral,
+  fetchReferralChainTimeline,
 } from '../../../hooks/useReferrals';
 import { useQueryClient } from '@tanstack/react-query';
 import { cn } from '../../../lib/utils';
@@ -20,6 +22,7 @@ import { generateReferralExcelReport } from '../../../utils/excelExport';
 import type { CompletedReferralData } from '../../../types/referral.types';
 import { useAuthStore } from '../../../store/authStore';
 import { supabase } from '../../../lib/supabase';
+import { uploadMultipleFiles, getFileTypeCategory } from '../../../lib/fileUpload';
 import { DeclineReferralModal } from './DeclineReferralModal';
 
 function formatTimeAMPM(time: string): string {
@@ -120,7 +123,8 @@ export const ReferralDetails: React.FC<ReferralDetailsProps> = ({
   onClose
 }) => {
   const queryClient = useQueryClient();
-  const { data: attachments = [], isLoading: loading } = useReferralAttachments(referral.id);
+  const transferReferralMutation = useTransferReferral();
+  const { data: attachments = [], isLoading: loading } = useChainAttachments(referral.id);
   const { data: transferHistory = [] } = useTransferHistory(referral.id);
   const { data: medicationHistory = [] } = useMedicationHistory(referral.id);
   const { data: completeMedicationTrail = [], isLoading: isLoadingTrail, refetch: refetchTrail } = useCompleteMedicationTrail(referral.id);
@@ -354,29 +358,43 @@ export const ReferralDetails: React.FC<ReferralDetailsProps> = ({
         
         // Generate Excel report with the completion data
         try {
-          // Fetch fresh medication history and complete trail
-          const [medicationHistoryResult, completeMedicationTrailResult] = await Promise.all([
+          // Fetch fresh medication history, complete trail, and per-stage chain timeline
+          const [medicationHistoryResult, completeMedicationTrailResult, chainTimeline] = await Promise.all([
             (supabase as any).rpc('get_medication_timeline', {
               p_referral_id: referral.id
             }),
             (supabase as any).rpc('get_complete_medication_trail', {
               p_referral_id: referral.id
-            })
+            }),
+            fetchReferralChainTimeline(referral.id)
           ]);
 
           const freshMedicationHistory = medicationHistoryResult.data;
-          const completeMedicationTrail = completeMedicationTrailResult.data;
+          const completeMedicationTrail = completeMedicationTrailResult.data || [];
+
+          // The in-memory referral never carries attachments — count them across the
+          // whole transfer chain (derive chain referral ids from the trail) so the
+          // report reflects every file added at any hop, not 0.
+          const chainReferralIds = Array.from(new Set(
+            (completeMedicationTrail as any[]).map((s: any) => s.referral_id).filter(Boolean)
+          ));
+          if (chainReferralIds.length === 0) chainReferralIds.push(referral.id);
+          const { data: chainAttachments } = await supabase
+            .from('referral_attachments').select('id').in('referral_id', chainReferralIds);
+          const chainAttachmentIds = ((chainAttachments as any[]) || []).map((a: any) => a.id as string);
 
           console.log('📊 Excel Report Data:', {
             referralId: referral.id,
             medicationHistoryCount: freshMedicationHistory?.length || 0,
             completeMedicationTrailCount: completeMedicationTrail?.length || 0,
+            chainAttachmentCount: chainAttachmentIds.length,
             trail: completeMedicationTrail
           });
 
           const reportData: CompletedReferralData = {
             referral: {
               ...referral,
+              attachments: chainAttachmentIds,
               medication_history: freshMedicationHistory || []
             },
             completionData: {
@@ -391,9 +409,10 @@ export const ReferralDetails: React.FC<ReferralDetailsProps> = ({
               finalDiagnosisBy: completionData.finalDiagnosisCategory || completionData.finalDiagnosisDetails ? profile?.full_name || 'Unknown User' : undefined
             },
             transferHistory: transferHistory || [],
-            completeMedicationTrail: completeMedicationTrail || []
+            completeMedicationTrail: completeMedicationTrail || [],
+            chainTimeline
           };
-          
+
           await generateReferralExcelReport(reportData);
           
           toast.success('Excel report generated successfully!');
@@ -429,237 +448,194 @@ export const ReferralDetails: React.FC<ReferralDetailsProps> = ({
     setShowTransferModal(true);
   };
 
-  // Handle referral transfer
-  const handleReferralTransfer = async (transferData: TransferData) => {
-    try {
-      console.log('Transferring referral with data:', transferData);
-      
-      // Here you would typically:
-      // 1. Upload any new attachments
-      // 2. Create a new referral for the target department
-      // 3. Update the original referral status
-      // 4. Notify the target doctor
-      
-      // For now, we'll simulate the transfer
-      toast.success(`Referral transferred to ${transferData.department}`);
-      
-      // Update referral status (you might want a different status like 'Transferred')
-      onStatusChange(referral.id, 'Closed');
-      
-      setShowTransferModal(false);
-      onClose();
-    } catch (error) {
-      console.error('Error transferring referral:', error);
-      toast.error('Failed to transfer referral');
+  // Handle referral transfer — calls the real transfer_referral RPC
+  const handleReferralTransfer = (incomingTransferData: TransferData) => {
+    if (!profile?.id) {
+      toast.error('User session not found. Please refresh and try again.');
+      return;
     }
+
+    const transferPayload = {
+      originalReferralId: referral.id,
+      newToUserId: incomingTransferData.doctorId,
+      newToDepartment: incomingTransferData.department,
+      transferReason: incomingTransferData.transferReason || '',
+      transferNotes: incomingTransferData.specialNotes || '',
+      transferredByUserId: profile.id,
+      updatedMedicationOnTransfer: incomingTransferData.updatedMedication
+    };
+
+    transferReferralMutation.mutate(transferPayload, {
+      onSuccess: async (newReferralId: string) => {
+        // Persist any files the doctor attached during the transfer onto the NEW
+        // child referral, so they surface at this hop of the chain journey (the
+        // child's from_user_id is the transferring doctor, so the RLS INSERT
+        // policy on referral_attachments permits this). Best-effort: a file
+        // failure must NOT undo the already-committed transfer — but unlike the
+        // old create path, we surface failures as toasts instead of swallowing.
+        const files = incomingTransferData.attachments || [];
+        if (newReferralId && files.length > 0) {
+          try {
+            const uploadResults = await uploadMultipleFiles(files);
+            for (let i = 0; i < uploadResults.length; i++) {
+              const res = uploadResults[i];
+              const srcFile = files[i];
+              if (res.success && res.fileName && res.fileUrl) {
+                const { error: attErr } = await supabase
+                  .from('referral_attachments')
+                  .insert({
+                    referral_id: newReferralId,
+                    file_name: res.fileName,
+                    file_type: getFileTypeCategory(srcFile.type),
+                    file_url: res.fileUrl,
+                    uploaded_by: profile.id,
+                  });
+                if (attErr) {
+                  console.error('Transfer attachment insert failed:', attErr);
+                  toast.error(`Could not save attachment "${srcFile?.name || res.fileName}"`);
+                }
+              } else {
+                toast.error(`Upload failed for "${srcFile?.name || 'file'}": ${res.error || 'unknown error'}`);
+              }
+            }
+          } catch (e) {
+            console.error('Transfer attachment processing failed:', e);
+            toast.error('Some attachments could not be saved.');
+          }
+        }
+        queryClient.invalidateQueries({ queryKey: ['referrals'] });
+        setShowTransferModal(false);
+        onClose();
+      },
+      onError: (error: any) => {
+        toast.error(`Transfer failed: ${error?.message || 'Unknown error'}`);
+      }
+    });
+  };
+
+  // Assemble the full CompletedReferralData for a CLOSED referral. Shared by the
+  // Excel and PDF download paths so both always carry identical data (diagnosis,
+  // medication trail, per-stage chain timeline, chain-wide attachment count).
+  const assembleClosedReportData = async (): Promise<CompletedReferralData> => {
+    // Final diagnosis: recorded on THIS completed referral's row (not the parent it
+    // was transferred from) — fetch fresh so a re-download reflects what's stored.
+    let finalDiagnosisData = {
+      category: (referral as any).final_diagnosis_category || referral.finalDiagnosisCategory,
+      details: (referral as any).final_diagnosis_details || referral.finalDiagnosisDetails,
+      timestamp: (referral as any).final_diagnosis_timestamp || referral.finalDiagnosisTimestamp,
+      by: (referral as any).final_diagnosis_by || referral.finalDiagnosisBy,
+    };
+    try {
+      const { data: diagRow, error: diagErr } = await (supabase as any)
+        .from('referrals')
+        .select('final_diagnosis_category, final_diagnosis_details, final_diagnosis_timestamp, final_diagnosis_by')
+        .eq('id', referral.id)
+        .single();
+      if (!diagErr && diagRow) {
+        finalDiagnosisData = {
+          category: diagRow.final_diagnosis_category,
+          details: diagRow.final_diagnosis_details,
+          timestamp: diagRow.final_diagnosis_timestamp,
+          by: diagRow.final_diagnosis_by,
+        };
+      }
+    } catch (e) {
+      console.error('Final diagnosis fetch failed:', e);
+    }
+
+    // Resolve a diagnosis user-id to a display name.
+    if (finalDiagnosisData.by && typeof finalDiagnosisData.by === 'string' && finalDiagnosisData.by.includes('-')) {
+      try {
+        const { data: userData } = await (supabase as any)
+          .from('users').select('full_name').eq('id', finalDiagnosisData.by).single();
+        if (userData) finalDiagnosisData.by = userData.full_name;
+      } catch (e) {
+        console.error('Diagnosis user resolve failed:', e);
+      }
+    }
+
+    // Complete medication trail (whole chain).
+    const { data: trailData, error: trailError } = await (supabase as any)
+      .rpc('get_complete_medication_trail', { p_referral_id: referral.id });
+    if (trailError) throw new Error(`Medication trail fetch failed: ${trailError.message}`);
+    const completeMedicationTrail = trailData || [];
+
+    // Per-stage chain timeline (full path + per-hop accept/close times).
+    const chainTimeline = await fetchReferralChainTimeline(referral.id);
+
+    // Chain-wide attachment count.
+    let chainAttachmentIds: string[] = [];
+    try {
+      const chainIds = Array.from(new Set(
+        (completeMedicationTrail as any[]).map((s: any) => s.referral_id).filter(Boolean)
+      ));
+      if (chainIds.length === 0) chainIds.push(referral.id);
+      const { data: atts } = await supabase
+        .from('referral_attachments').select('id').in('referral_id', chainIds);
+      chainAttachmentIds = ((atts as any[]) || []).map((a: any) => a.id as string);
+    } catch (attErr) {
+      console.error('Attachment count fetch failed:', attErr);
+    }
+
+    const finalMedication = medicationHistory.length > 0
+      ? medicationHistory[medicationHistory.length - 1].medication_text
+      : referral.medicationGiven;
+
+    return {
+      referral: {
+        ...referral,
+        medicationGiven: referral.medicationGiven || 'No medication information available',
+        attachments: chainAttachmentIds,
+        medication_history: medicationHistory,
+      },
+      completionData: {
+        isPatientAttended: true, // closed referrals were attended
+        updatedMedication: finalMedication,
+        reasons: undefined,
+        completedAt: referral.end_time || new Date().toISOString(),
+        completedBy: finalDiagnosisData.by || profile?.full_name || 'Unknown User',
+        finalDiagnosisCategory: finalDiagnosisData.category,
+        finalDiagnosisDetails: finalDiagnosisData.details,
+        finalDiagnosisTimestamp: finalDiagnosisData.timestamp,
+        finalDiagnosisBy: finalDiagnosisData.by,
+      },
+      transferHistory: transferHistory || [],
+      completeMedicationTrail,
+      chainTimeline,
+    };
   };
 
   // Handle on-demand Excel report download for closed referrals
   const [isDownloading, setIsDownloading] = useState(false);
   const handleDownloadReport = async () => {
-    console.log('🚀 === EXCEL REPORT GENERATION START ===');
-    console.log('📋 Referral ID:', referral.id);
-    console.log('👤 User Profile:', profile);
-    console.log('📊 Initial Data:', {
-      medicationHistoryLength: medicationHistory.length,
-      transferHistoryLength: transferHistory?.length || 0,
-      referralStatus: referral.status,
-      hasTransferParent: !!referral.transfer_parent_id
-    });
-
     try {
       setIsDownloading(true);
-      console.log('⏳ Loading state set to true');
-      
-      // Step 1: Handle final diagnosis data
-      console.log('📋 Step 1: Processing final diagnosis data...');
-      let finalDiagnosisData = {
-        category: (referral as any).final_diagnosis_category || referral.finalDiagnosisCategory,
-        details: (referral as any).final_diagnosis_details || referral.finalDiagnosisDetails,
-        timestamp: (referral as any).final_diagnosis_timestamp || referral.finalDiagnosisTimestamp,
-        by: (referral as any).final_diagnosis_by || referral.finalDiagnosisBy
-      };
-      console.log('📋 Initial final diagnosis data:', finalDiagnosisData);
-      console.log('📋 Raw referral diagnosis fields:', {
-        snake_case: {
-          category: (referral as any).final_diagnosis_category,
-          details: (referral as any).final_diagnosis_details,
-          timestamp: (referral as any).final_diagnosis_timestamp,
-          by: (referral as any).final_diagnosis_by
-        },
-        camelCase: {
-          category: referral.finalDiagnosisCategory,
-          details: referral.finalDiagnosisDetails,
-          timestamp: referral.finalDiagnosisTimestamp,
-          by: referral.finalDiagnosisBy
-        }
-      });
-
-      // The final diagnosis is recorded on the referral that was actually COMPLETED
-      // (this one), NOT on the parent it was transferred from. Fetch it fresh from
-      // this referral's DB row so a re-download always reflects the stored diagnosis.
-      try {
-        const { data: diagRow, error: diagErr } = await (supabase as any)
-          .from('referrals')
-          .select('final_diagnosis_category, final_diagnosis_details, final_diagnosis_timestamp, final_diagnosis_by')
-          .eq('id', referral.id)
-          .single();
-
-        if (diagErr) {
-          console.error('❌ Error fetching final diagnosis:', diagErr);
-        } else if (diagRow) {
-          finalDiagnosisData = {
-            category: diagRow.final_diagnosis_category,
-            details: diagRow.final_diagnosis_details,
-            timestamp: diagRow.final_diagnosis_timestamp,
-            by: diagRow.final_diagnosis_by
-          };
-          console.log('✅ Final diagnosis fetched from completed referral:', finalDiagnosisData);
-        }
-      } catch (diagnosisError: any) {
-        console.error('❌ Critical error in final diagnosis fetch:', diagnosisError);
-      }
-      
-      // Step 1.5: Resolve final diagnosis user ID to user name
-      if (finalDiagnosisData.by && typeof finalDiagnosisData.by === 'string' && finalDiagnosisData.by.includes('-')) {
-        console.log('🔄 Step 1.5: Resolving diagnosis user ID to name:', finalDiagnosisData.by);
-        try {
-          const { data: userData, error: userError } = await (supabase as any)
-            .from('users')
-            .select('full_name')
-            .eq('id', finalDiagnosisData.by)
-            .single();
-
-          if (userError) {
-            console.error('❌ Error fetching user name:', userError);
-          } else if (userData) {
-            finalDiagnosisData.by = userData.full_name;
-            console.log('✅ Resolved diagnosis user name:', userData.full_name);
-          }
-        } catch (userResolveError: any) {
-          console.error('❌ Critical error resolving diagnosis user:', userResolveError);
-          // Keep the original ID if resolution fails
-        }
-      }
-      
-      // Step 2: Fetch complete medication trail
-      console.log('💊 Step 2: Fetching complete medication trail...');
-      let completeMedicationTrail: any[] = [];
-      try {
-        const { data: completeMedicationTrailData, error: trailError } = await (supabase as any).rpc('get_complete_medication_trail', {
-          p_referral_id: referral.id
-        });
-
-        if (trailError) {
-          console.error('❌ Error fetching complete medication trail:', trailError);
-          throw new Error(`Medication trail fetch failed: ${trailError.message}`);
-        }
-
-        completeMedicationTrail = completeMedicationTrailData || [];
-        console.log('✅ Complete medication trail fetched:', {
-          count: completeMedicationTrail.length,
-          data: completeMedicationTrail.slice(0, 2) // Show first 2 entries for debugging
-        });
-      } catch (trailError: any) {
-        console.error('❌ Critical error in medication trail fetch:', trailError);
-        throw new Error(`Medication trail processing failed: ${trailError.message}`);
-      }
-
-      // Step 2.5: Count attachments across the whole chain (the in-memory referral
-      // object never carries attachments, so the report would otherwise show 0).
-      let chainAttachmentIds: string[] = [];
-      try {
-        const chainIds = Array.from(new Set(
-          (completeMedicationTrail as any[]).map((s: any) => s.referral_id).filter(Boolean)
-        ));
-        if (chainIds.length === 0) chainIds.push(referral.id);
-        const { data: atts } = await supabase
-          .from('referral_attachments').select('id').in('referral_id', chainIds);
-        chainAttachmentIds = ((atts as any[]) || []).map((a: any) => a.id as string);
-      } catch (attErr) {
-        console.error('❌ Attachment count fetch failed:', attErr);
-      }
-
-      // Step 3: Determine final medication
-      console.log('💊 Step 3: Determining final medication...');
-      const finalMedication = medicationHistory.length > 0 
-        ? medicationHistory[medicationHistory.length - 1].medication_text 
-        : referral.medicationGiven;
-      console.log('💊 Final medication determined:', finalMedication);
-
-      // Step 4: Build report data structure
-      console.log('📄 Step 4: Building report data structure...');
-      const reportData: CompletedReferralData = {
-        referral: {
-          ...referral,
-          medicationGiven: referral.medicationGiven || 'No medication information available',
-          attachments: chainAttachmentIds,
-          medication_history: medicationHistory
-        },
-        completionData: {
-          isPatientAttended: true, // closed referrals were attended
-          updatedMedication: finalMedication,
-          reasons: undefined,
-          completedAt: referral.end_time || new Date().toISOString(),
-          completedBy: finalDiagnosisData.by || profile?.full_name || 'Unknown User',
-          finalDiagnosisCategory: finalDiagnosisData.category,
-          finalDiagnosisDetails: finalDiagnosisData.details,
-          finalDiagnosisTimestamp: finalDiagnosisData.timestamp,
-          finalDiagnosisBy: finalDiagnosisData.by
-        },
-        transferHistory: transferHistory || [],
-        completeMedicationTrail: completeMedicationTrail
-      };
-      
-      console.log('📄 Final report data structure:', {
-        referralId: reportData.referral.id,
-        patientName: reportData.referral.patientName,
-        medicationHistoryCount: reportData.referral.medication_history?.length || 0,
-        transferHistoryCount: reportData.transferHistory.length,
-        completeMedicationTrailCount: reportData.completeMedicationTrail.length,
-        hasFinalDiagnosis: !!(reportData.completionData.finalDiagnosisCategory || reportData.completionData.finalDiagnosisDetails)
-      });
-
-      // Step 5: Generate Excel report
-      console.log('📊 Step 5: Calling generateReferralExcelReport...');
+      const reportData = await assembleClosedReportData();
       await generateReferralExcelReport(reportData);
-      console.log('✅ Excel report generation completed successfully!');
-      
       toast.success('Excel report downloaded successfully!');
-      console.log('🎉 === EXCEL REPORT GENERATION SUCCESS ===');
-      
     } catch (error: any) {
-      console.error('💥 === EXCEL REPORT GENERATION FAILED ===');
-      console.error('❌ Error Type:', error.constructor.name);
-      console.error('❌ Error Message:', error.message);
-      console.error('❌ Error Stack:', error.stack);
-      console.error('❌ Referral Context:', {
-        referralId: referral.id,
-        referralStatus: referral.status,
-        patientName: referral.patientName,
-        hasTransferParent: !!referral.transfer_parent_id,
-        transferParentId: referral.transfer_parent_id
-      });
-      
-      // More specific error messages
-      let userMessage = 'Failed to generate report';
-      if (error.message.includes('Final diagnosis fetch failed')) {
-        userMessage = 'Failed to fetch referral diagnosis data';
-      } else if (error.message.includes('Medication trail')) {
-        userMessage = 'Failed to fetch medication history';
-      } else if (error.message.includes('buildReportData')) {
-        userMessage = 'Failed to process report data';
-      } else if (error.message.includes('XLSX')) {
-        userMessage = 'Failed to generate Excel file';
-      }
-      
-      toast.error(`${userMessage}: ${error.message}`);
-      console.error('🚨 User notified with error message:', userMessage);
-      
+      console.error('❌ Excel report generation failed:', error);
+      toast.error(`Failed to generate report: ${error?.message || 'Unknown error'}`);
     } finally {
       setIsDownloading(false);
-      console.log('🔄 Loading state reset to false');
-      console.log('🏁 === EXCEL REPORT GENERATION END ===');
+    }
+  };
+
+  // Handle on-demand branded PDF report download for closed referrals.
+  // pdfExport (html2pdf.js) is lazy-loaded so it stays out of the main bundle.
+  const [isDownloadingPdf, setIsDownloadingPdf] = useState(false);
+  const handleDownloadPdf = async () => {
+    try {
+      setIsDownloadingPdf(true);
+      const reportData = await assembleClosedReportData();
+      const { generateReferralPdfReport } = await import('../../../utils/pdfExport');
+      await generateReferralPdfReport(reportData);
+      toast.success('PDF report downloaded successfully!');
+    } catch (error: any) {
+      console.error('❌ PDF report generation failed:', error);
+      toast.error(`Failed to generate PDF: ${error?.message || 'Unknown error'}`);
+    } finally {
+      setIsDownloadingPdf(false);
     }
   };
 
@@ -1013,70 +989,115 @@ export const ReferralDetails: React.FC<ReferralDetailsProps> = ({
         </div>
       )}
 
-      {/* Attachments */}
-      {(attachments.length > 0 || loading) && (
-        <div>
+      {/* Attachments — always shown so users can see "no attachments" rather than a blank gap */}
+      <div>
           <h3 className="text-lg font-semibold text-gray-900 mb-3 flex items-center" id="attachments-section">
             <FileText className="w-5 h-5 text-gray-600 mr-2" />
             Attachments
+            {!loading && (
+              <span className="ml-2 text-sm font-normal text-gray-500">
+                ({attachments.length} {attachments.length === 1 ? 'file' : 'files'} across this referral journey)
+              </span>
+            )}
           </h3>
-          
+
           {loading ? (
             <div className="flex justify-center items-center h-24 bg-gray-50 border border-gray-200 rounded-lg">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
             </div>
+          ) : attachments.length === 0 ? (
+            <div className="flex items-center justify-center h-16 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-500">
+              No attachments for this referral journey
+            </div>
           ) : (
-            <div className="space-y-2">
-              {attachments.map((attachment: any) => (
-                <div 
-                  key={attachment.id}
-                  className="flex items-center justify-between p-3 bg-gray-50 border border-gray-200 rounded-lg hover:bg-gray-100 transition-colors"
-                >
-                  <div className="flex items-center">
-                    {getFileIcon(attachment.fileType)}
-                    <div className="ml-3">
-                      <p className="text-sm font-medium text-gray-900">{attachment.fileName}</p>
-                      <div className="flex items-center text-xs text-gray-500 mt-1">
-                        <span className="mr-3">{attachment.fileSize}</span>
-                        <span>{format(new Date(attachment.createdAt), 'MMM d, yyyy')}</span>
+            <div className="space-y-4">
+              {Object.entries(
+                (attachments as any[]).reduce((groups: Record<string, any[]>, att: any) => {
+                  const key = String(att.hopLevel ?? 0);
+                  (groups[key] = groups[key] || []).push(att);
+                  return groups;
+                }, {} as Record<string, any[]>)
+              )
+                .sort((a, b) => Number(a[0]) - Number(b[0]))
+                .map(([hopKey, items]) => {
+                  const groupItems = items as any[];
+                  const first = groupItems[0];
+                  const hopLevel = first.hopLevel ?? 0;
+                  const isCurrent = groupItems.some((i: any) => i.isCurrentReferral);
+                  const hopLabel = hopLevel === 0 ? 'ORIGIN' : `HOP ${hopLevel + 1}`;
+                  return (
+                    <div key={hopKey}>
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className={cn(
+                          'text-xs font-semibold px-2 py-0.5 rounded',
+                          isCurrent ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'
+                        )}>
+                          {hopLabel}{isCurrent ? ' · THIS REFERRAL' : ''}
+                        </span>
+                        {first.departmentContext && (
+                          <span className="text-xs text-gray-500 flex items-center">
+                            <Building2 className="w-3 h-3 mr-1" />
+                            {first.departmentContext}
+                          </span>
+                        )}
+                      </div>
+                      <div className="space-y-2">
+                        {groupItems.map((attachment: any) => (
+                          <div
+                            key={attachment.id}
+                            className="flex items-center justify-between p-3 bg-gray-50 border border-gray-200 rounded-lg hover:bg-gray-100 transition-colors"
+                          >
+                            <div className="flex items-center">
+                              {getFileIcon(attachment.fileType)}
+                              <div className="ml-3">
+                                <p className="text-sm font-medium text-gray-900">{attachment.fileName}</p>
+                                <div className="flex items-center text-xs text-gray-500 mt-1">
+                                  <span className="mr-3">{attachment.fileSize}</span>
+                                  <span className="mr-3">{format(new Date(attachment.createdAt), 'MMM d, yyyy')}</span>
+                                  {attachment.uploadedBy && attachment.uploadedBy !== 'Unknown' && (
+                                    <span>by {attachment.uploadedBy}</span>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="flex items-center space-x-2">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={(e: React.MouseEvent) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  handlePreview(attachment);
+                                }}
+                                className="text-blue-600 border-blue-200 hover:bg-blue-50"
+                              >
+                                <Eye size={14} className="mr-1" />
+                                View
+                              </Button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={(e: React.MouseEvent) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  handleDownload(attachment);
+                                }}
+                                className="text-green-600 border-green-200 hover:bg-green-50"
+                              >
+                                <Download size={14} className="mr-1" />
+                                Download
+                              </Button>
+                            </div>
+                          </div>
+                        ))}
                       </div>
                     </div>
-                  </div>
-                  
-                  <div className="flex items-center space-x-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={(e: React.MouseEvent) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        handlePreview(attachment);
-                      }}
-                      className="text-blue-600 border-blue-200 hover:bg-blue-50"
-                    >
-                      <Eye size={14} className="mr-1" />
-                      View
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={(e: React.MouseEvent) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        handleDownload(attachment);
-                      }}
-                      className="text-green-600 border-green-200 hover:bg-green-50"
-                    >
-                      <Download size={14} className="mr-1" />
-                      Download
-                    </Button>
-                  </div>
-                </div>
-              ))}
+                  );
+                })}
             </div>
           )}
-        </div>
-      )}
+      </div>
 
       {/* Security Note */}
       <div className="flex flex-col sm:flex-row items-center justify-between text-xs text-gray-500 bg-gray-50 p-2 rounded-lg">
@@ -1125,27 +1146,46 @@ export const ReferralDetails: React.FC<ReferralDetailsProps> = ({
           </Button>
         )}
         
-        {/* Download Report button for closed referrals */}
+        {/* Download buttons for closed referrals */}
         {referral.status === 'Closed' && (
-          <Button
-            onClick={handleDownloadReport}
-            disabled={isDownloading}
-            className="flex-1 bg-gradient-to-r from-green-600 to-green-500"
-          >
-            {isDownloading ? (
-              <>
-                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2" />
-                Generating...
-              </>
-            ) : (
-              <>
-                <Download size={16} className="mr-2" />
-                Download Report
-              </>
-            )}
-          </Button>
+          <>
+            <Button
+              onClick={handleDownloadReport}
+              disabled={isDownloading}
+              className="flex-1 bg-gradient-to-r from-green-600 to-green-500"
+            >
+              {isDownloading ? (
+                <>
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2" />
+                  Generating...
+                </>
+              ) : (
+                <>
+                  <Download size={16} className="mr-2" />
+                  Download Excel
+                </>
+              )}
+            </Button>
+            <Button
+              onClick={handleDownloadPdf}
+              disabled={isDownloadingPdf}
+              className="flex-1 bg-gradient-to-r from-rose-600 to-red-500"
+            >
+              {isDownloadingPdf ? (
+                <>
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2" />
+                  Generating...
+                </>
+              ) : (
+                <>
+                  <FileText size={16} className="mr-2" />
+                  Download PDF
+                </>
+              )}
+            </Button>
+          </>
         )}
-        
+
         {/* Cancel button always visible */}
         <Button
           variant="outline"

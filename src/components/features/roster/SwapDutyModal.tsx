@@ -62,17 +62,23 @@ export const SwapDutyModal: React.FC<SwapDutyModalProps> = ({
   }, []);
 
   // Load users when needed.
-  // Duty swaps are restricted to active doctors within the same department.
+  // Duty swaps are restricted to active doctors within the same hospital and department.
   const loadUsers = async () => {
     try {
       setLoading(true);
-      const { data, error } = await supabase
+      const hospitalId = (profile as any)?.hospital_id;
+      let query = supabase
         .from('users')
         .select('id, full_name, role, department')
         .neq('id', duty?.user_id)
         .eq('is_active', true)
-        .eq('department', duty?.department ?? '')
-        .order('full_name', { ascending: true });
+        .eq('department', duty?.department ?? '');
+
+      if (hospitalId) {
+        query = query.eq('hospital_id', hospitalId);
+      }
+
+      const { data, error } = await query.order('full_name', { ascending: true });
 
       if (error) throw error;
 

@@ -9,13 +9,16 @@ import {
   FileText,
   Bot,
   BarChart3,
-  Settings,
+  Activity,
   FlaskConical,
+  Building2,
+  ShieldCheck,
   PanelLeftClose,
   PanelLeftOpen,
   X
 } from 'lucide-react';
 import { useResponsive } from '../../hooks/useResponsive';
+import { useAuthStore } from '../../store/authStore';
 import { Button } from '../ui/Button';
 import { cn } from '../../lib/utils';
 import { useState } from 'react';
@@ -34,7 +37,11 @@ const navigationItems = [
   { name: 'Duty Roster', icon: Calendar, action: 'roster' },
   { name: 'Research Insight', href: '/research-insight', icon: FlaskConical },
   { name: 'Analytics', href: '/analytics', icon: BarChart3 },
-  { name: 'Settings', href: '/settings', icon: Settings },
+  { name: 'Analytics Overview', href: '/analytics-overview', icon: Activity },
+  // Superuser + platform owner: approve doctors / superuser requests.
+  { name: 'Approvals', href: '/approvals', icon: ShieldCheck, adminOnly: true },
+  // Platform-owner-only: onboard hospitals.
+  { name: 'Hospitals', href: '/hospitals', icon: Building2, platformOnly: true },
 ];
 
 const COLLAPSE_KEY = 'sidebar-collapsed';
@@ -42,7 +49,11 @@ const COLLAPSE_KEY = 'sidebar-collapsed';
 const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, className }) => {
   const { isMobile, isTablet, isDesktop } = useResponsive();
   const location = useLocation();
+  const { profile } = useAuthStore();
   const navigate = useNavigate();
+  const appRole = (profile as any)?.app_role;
+  const isPlatform = appRole === 'platform';
+  const isAdmin = appRole === 'platform' || appRole === 'superuser';
   const [showRosterModal, setShowRosterModal] = useState(false);
 
   // Manual collapse (desktop only); persisted across reloads.
@@ -62,11 +73,18 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, className }) => {
   // Icon-only when tablet (automatic) or when the user collapsed it on desktop.
   const iconOnly = isTablet || (isDesktop && collapsed);
 
-  // Create navigation with current state based on location
-  const navigation = navigationItems.map(item => ({
-    ...item,
-    current: item.href ? location.pathname === item.href : false
-  }));
+  // Create navigation with current state based on location.
+  // Platform-only items (Hospitals) → owner; admin items (Approvals) → owner or superuser.
+  const navigation = navigationItems
+    .filter(item => {
+      if ((item as any).platformOnly) return isPlatform;
+      if ((item as any).adminOnly) return isAdmin;
+      return true;
+    })
+    .map(item => ({
+      ...item,
+      current: item.href ? location.pathname === item.href : false
+    }));
 
   const sidebarVariants = {
     open: {

@@ -29,7 +29,7 @@ import { ReferralCompletionModal, type CompletionData, type TransferData } from 
 import { ReferralTransferModal } from './ReferralTransferModal';
 import { cn } from '../../../lib/utils';
 import { useQueryClient } from '@tanstack/react-query';
-import { useReferrals, useCreateReferral, useUpdateReferralStatus, useAddMedicationHistory, useTransferReferral, referralKeys, useAddDeclineReason } from '../../../hooks/useReferrals';
+import { useReferrals, useCreateReferral, useUpdateReferralStatus, useAddMedicationHistory, useTransferReferral, referralKeys, useAddDeclineReason, fetchReferralChainTimeline } from '../../../hooks/useReferrals';
 import { useCompleteMedicationTrail } from '../../../hooks/useCompleteMedicationTrail';
 import { mapStatusForDisplay } from '../../../types/referral.types';
 import { useAuthStore } from '../../../store/authStore';
@@ -283,12 +283,13 @@ const ReferralManagement: React.FC = () => {
           ));
           if (chainReferralIds.length === 0) chainReferralIds.push(referralToComplete.id);
 
-          const [attachmentsResult, freshReferralResult] = await Promise.all([
+          const [attachmentsResult, freshReferralResult, chainTimeline] = await Promise.all([
             supabase.from('referral_attachments').select('id').in('referral_id', chainReferralIds),
             supabase.from('referrals')
               .select('final_diagnosis_category, final_diagnosis_details, final_diagnosis_timestamp')
               .eq('id', referralToComplete.id)
-              .single()
+              .single(),
+            fetchReferralChainTimeline(referralToComplete.id)
           ]);
 
           const chainAttachmentIds = ((attachmentsResult.data as any[]) || []).map((a: any) => a.id as string);
@@ -324,7 +325,8 @@ const ReferralManagement: React.FC = () => {
               finalDiagnosisBy: (diagCategory || diagDetails) ? (profile.full_name || 'Unknown User') : undefined
             },
             transferHistory: [], // Will be empty for just-completed referrals
-            completeMedicationTrail: completeMedicationTrail
+            completeMedicationTrail: completeMedicationTrail,
+            chainTimeline
           };
           
           // Import the function at the top of the file

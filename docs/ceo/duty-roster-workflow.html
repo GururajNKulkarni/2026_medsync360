@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<style>
+  @page { size: A4; margin: 12mm 13mm 9mm 13mm; }
+  * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  body { font-family: 'Segoe UI', Arial, sans-serif; color: #1f2937; margin: 0; font-size: 11.5px; line-height: 1.38; }
+  .brand { display:flex; align-items:center; justify-content:space-between; border-bottom:3px solid #0e7490; padding-bottom:7px; margin-bottom:11px; }
+  .brand h1 { font-size: 20px; margin:0; color:#0e7490; letter-spacing:.3px; }
+  .brand .tag { font-size:10px; color:#64748b; }
+  .doc-title { font-size:15px; font-weight:700; color:#0f172a; margin:0 0 2px; }
+  .doc-sub { font-size:11px; color:#64748b; margin:0 0 14px; }
+  .lane { display:flex; gap:10px; margin-bottom:7px; align-items:stretch; }
+  .lane-label { width:92px; flex:0 0 92px; background:#0e7490; color:#fff; border-radius:8px; display:flex; align-items:center; justify-content:center; text-align:center; font-weight:700; font-size:11px; padding:6px; }
+  .lane-label.alt { background:#0891b2; }
+  .lane-label.green { background:#0d9488; }
+  .lane-label.amber { background:#b45309; }
+  .steps { flex:1; display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+  .step { background:#f0f9ff; border:1.5px solid #bae6fd; border-radius:8px; padding:6px 9px; flex:1; min-width:150px; }
+  .step b { color:#0c4a6e; display:block; font-size:11.5px; margin-bottom:2px; }
+  .step span { font-size:10.5px; color:#475569; }
+  .arrow { color:#0e7490; font-weight:800; font-size:16px; padding:0 1px; }
+  .decision { background:#fffbeb; border:1.5px solid #fcd34d; border-radius:8px; padding:8px 10px; flex:1; min-width:150px; }
+  .decision b { color:#92400e; display:block; font-size:11.5px; }
+  .decision span { font-size:10.5px; color:#78350f; }
+  .down { text-align:center; color:#0e7490; font-size:15px; font-weight:800; margin:-3px 0 3px 102px; }
+  .notif { background:#ecfdf5; border:1.5px solid #6ee7b7; }
+  .notif b { color:#065f46; }
+  .legend { margin-top:14px; border-top:1px solid #e2e8f0; padding-top:8px; display:flex; gap:18px; flex-wrap:wrap; font-size:10px; color:#475569; }
+  .legend i { display:inline-block; width:11px; height:11px; border-radius:3px; margin-right:4px; vertical-align:middle; }
+  .panel { background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:8px 11px; margin-top:8px; }
+  .panel h3 { margin:0 0 6px; font-size:12.5px; color:#0e7490; }
+  .panel ul { margin:0; padding-left:16px; }
+  .panel li { font-size:11px; margin-bottom:3px; }
+  .foot { margin-top:14px; font-size:9px; color:#94a3b8; text-align:center; border-top:1px solid #e2e8f0; padding-top:6px; }
+  .pill { display:inline-block; background:#0e7490; color:#fff; font-size:9px; padding:2px 7px; border-radius:10px; margin-left:6px; }
+</style>
+</head>
+<body>
+  <div class="brand">
+    <h1>MedSync<span style="color:#0d9488">360</span></h1>
+    <div class="tag">All-in-one clinical workflow suite · KDEM pitch companion</div>
+  </div>
+
+  <p class="doc-title">Duty Roster &amp; Shift-Swap Workflow <span class="pill">LIVE FEATURE</span></p>
+  <p class="doc-sub">How hospitals schedule, view, and exchange clinical duties — replacing paper / Excel rosters with a single auditable system.</p>
+
+  <!-- Lane 1: Scheduling -->
+  <div class="lane">
+    <div class="lane-label">Schedule</div>
+    <div class="steps">
+      <div class="step"><b>Open Duty Roster</b><span>Admin / doctor opens the calendar (month &amp; week views)</span></div>
+      <div class="arrow">&#8594;</div>
+      <div class="step"><b>Create Duty</b><span>Pick doctor, date, shift type &amp; department</span></div>
+      <div class="arrow">&#8594;</div>
+      <div class="step"><b>Shift Types</b><span>Day · Afternoon · Night, organised department-wise</span></div>
+    </div>
+  </div>
+  <div class="down">&#8595;</div>
+
+  <!-- Lane 2: View -->
+  <div class="lane">
+    <div class="lane-label alt">View</div>
+    <div class="steps">
+      <div class="step"><b>Roster Calendar</b><span>See who is on duty per day, colour-coded by shift</span></div>
+      <div class="arrow">&#8594;</div>
+      <div class="step"><b>Department Filter</b><span>Focus on a single department's coverage</span></div>
+      <div class="arrow">&#8594;</div>
+      <div class="step"><b>Export</b><span>One-click Excel export of the roster</span></div>
+    </div>
+  </div>
+  <div class="down">&#8595;</div>
+
+  <!-- Lane 3: Swap -->
+  <div class="lane">
+    <div class="lane-label green">Swap</div>
+    <div class="steps">
+      <div class="step"><b>Request Swap</b><span>Select a duty &amp; choose "Swap Assignment"</span></div>
+      <div class="arrow">&#8594;</div>
+      <div class="step"><b>Pick Colleague</b><span>Choose a doctor in the same department</span></div>
+      <div class="arrow">&#8594;</div>
+      <div class="decision"><b>Confirm swap?</b><span>"Are you sure?" → Yes proceeds</span></div>
+    </div>
+  </div>
+  <div class="down">&#8595;</div>
+
+  <!-- Lane 4: Notify -->
+  <div class="lane">
+    <div class="lane-label amber">Notify</div>
+    <div class="steps">
+      <div class="step notif"><b>Duty Reassigned</b><span>Roster updates instantly; new duty card appears</span></div>
+      <div class="arrow">&#8594;</div>
+      <div class="step notif"><b>In-app Notification</b><span>Bell alerts the other doctor of the swap</span></div>
+      <div class="arrow">&#8594;</div>
+      <div class="step notif"><b>Audit Trail</b><span>Who swapped, with whom, and when — recorded</span></div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h3>Why it matters for the hospital</h3>
+    <ul>
+      <li><b>Zero paperwork:</b> replaces the manual Excel / whiteboard roster that consumes hours each week.</li>
+      <li><b>No coverage gaps:</b> department-wise calendar makes missing shifts obvious at a glance.</li>
+      <li><b>Self-service swaps:</b> doctors exchange duties in seconds, with the counterpart notified automatically — no admin chase-ups.</li>
+      <li><b>Accountability:</b> every schedule change is logged for audit and dispute resolution.</li>
+    </ul>
+  </div>
+
+  <div class="legend">
+    <span><i style="background:#0e7490"></i>Schedule</span>
+    <span><i style="background:#0891b2"></i>View</span>
+    <span><i style="background:#0d9488"></i>Swap</span>
+    <span><i style="background:#b45309"></i>Notify</span>
+    <span><i style="background:#fcd34d"></i>Decision point</span>
+  </div>
+
+  <div class="foot">MedSync360 — Duty Roster Workflow · Confidential · By Dr. Basu &amp; Guru Hublikar</div>
+</body>
+</html>

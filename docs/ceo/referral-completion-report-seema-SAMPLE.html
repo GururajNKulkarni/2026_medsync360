@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>MedSync 360 — Referral Completion Report (Seema)</title>
+<style>
+  @page { size: A4; margin: 0; }
+  * { box-sizing:border-box; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+  body { font-family:'Segoe UI', Arial, sans-serif; color:#1f2937; margin:0; font-size:11px; line-height:1.4; background:#eef2f5; }
+  .page { width:210mm; min-height:297mm; margin:0 auto; background:#fff; box-shadow:0 0 12px rgba(0,0,0,.12); }
+  .wrap { padding:0 16mm 14mm; }
+  /* header */
+  .hdr { background:linear-gradient(135deg,#0e7490 0%,#0d9488 100%); color:#fff; padding:18px 16mm 16px; position:relative; }
+  .hdr .top { display:flex; justify-content:space-between; align-items:flex-start; }
+  .hdr h1 { margin:0; font-size:22px; letter-spacing:.3px; }
+  .hdr h1 span { color:#bbf7d0; }
+  .hdr .rtitle { font-size:13px; font-weight:600; margin-top:3px; opacity:.97; }
+  .hdr .meta { text-align:right; font-size:9.5px; opacity:.92; line-height:1.5; margin-top:6px; }
+  .sample { position:absolute; top:14px; right:16mm; background:#fbbf24; color:#7c2d12; font-size:9px; font-weight:800; padding:3px 9px; border-radius:10px; letter-spacing:1px; }
+  /* section */
+  .sec { margin-top:13px; }
+  .sec, .cards2, .card, .path, .mstats, .tli, .diag, .steps, .badges, .stage { page-break-inside:avoid; break-inside:avoid; }
+  .sec-h { font-size:11px; font-weight:700; color:#0e7490; text-transform:uppercase; letter-spacing:.6px; border-bottom:2px solid #e2e8f0; padding-bottom:4px; margin-bottom:8px; display:flex; align-items:center; gap:6px; }
+  .sec-h .dot { width:8px; height:8px; border-radius:2px; background:#0d9488; }
+  .row { display:flex; justify-content:space-between; border-bottom:1px dotted #e2e8f0; padding:3px 0; }
+  .row .k { color:#64748b; } .row .v { color:#0f172a; font-weight:600; text-align:right; }
+  .cards2 { display:flex; gap:12px; }
+  .card { flex:1; background:#f8fafc; border:1px solid #e8edf2; border-radius:9px; padding:11px 13px; }
+  .card .ct { font-size:10px; font-weight:700; color:#0e7490; text-transform:uppercase; letter-spacing:.5px; margin-bottom:6px; }
+  /* path (multi-stage) */
+  .path { display:flex; align-items:stretch; gap:6px; }
+  .path .node { flex:1; background:#f0f9ff; border:1.5px solid #bae6fd; border-radius:9px; padding:8px 9px; text-align:center; }
+  .path .node.origin { background:#eef2ff; border-color:#c7d2fe; }
+  .path .node.final { background:#ecfdf5; border-color:#6ee7b7; }
+  .path .node .lbl { font-size:8px; color:#0891b2; text-transform:uppercase; letter-spacing:.5px; font-weight:700; }
+  .path .node.origin .lbl { color:#4f46e5; } .path .node.final .lbl { color:#059669; }
+  .path .node .dept { font-size:10.5px; font-weight:700; color:#0c4a6e; margin-top:2px; line-height:1.25; }
+  .path .node .doc { font-size:9.5px; color:#334155; margin-top:1px; }
+  .path .ar { color:#0e7490; font-size:16px; font-weight:800; display:flex; align-items:center; }
+  /* med stats */
+  .mstats { display:flex; gap:10px; }
+  .mstat { flex:1; border:1px solid #e8edf2; border-radius:9px; padding:9px 11px; background:#fff; }
+  .mstat .l { font-size:9px; color:#64748b; text-transform:uppercase; letter-spacing:.4px; }
+  .mstat .v { font-size:13px; font-weight:700; color:#0f172a; margin-top:2px; }
+  .chg { background:#ecfdf5; border-color:#6ee7b7; } .chg .v { color:#065f46; }
+  /* medication journey timeline (vertical) */
+  .tl { position:relative; margin-left:6px; }
+  .tl:before { content:""; position:absolute; left:7px; top:6px; bottom:10px; width:2px; background:#cbd5e1; }
+  .tli { position:relative; padding:0 0 12px 28px; }
+  .tli .mk { position:absolute; left:0; top:2px; width:16px; height:16px; border-radius:50%; background:#0e7490; color:#fff; font-size:9px; font-weight:700; display:flex; align-items:center; justify-content:center; box-shadow:0 0 0 3px #fff; }
+  .tli.created .mk{background:#f59e0b;} .tli.updated .mk{background:#7c3aed;} .tli.received .mk{background:#0891b2;} .tli.completed .mk{background:#0d9488;}
+  .tli .th { display:flex; justify-content:space-between; }
+  .tli .ttl { font-weight:700; color:#0f172a; font-size:11.5px; }
+  .tli .tm { color:#64748b; font-size:10px; }
+  .tli .meta2 { font-size:10.5px; color:#334155; margin-top:1px; }
+  .tli .rx { display:inline-block; margin-top:3px; background:#f0f9ff; border:1px solid #bae6fd; color:#0c4a6e; font-size:10px; font-weight:600; padding:2px 8px; border-radius:6px; }
+  .tli .ctx { font-size:9.5px; color:#64748b; font-style:italic; margin-top:2px; }
+  /* diagnosis box */
+  .diag { background:#ecfdf5; border:1px solid #6ee7b7; border-radius:9px; padding:11px 13px; }
+  .diag .cat { font-size:13px; font-weight:800; color:#065f46; }
+  .diag .det { font-size:11px; color:#334155; margin-top:2px; }
+  .diag .by { font-size:9.5px; color:#047857; margin-top:5px; }
+  /* per-stage timeline */
+  .stages { display:flex; flex-direction:column; gap:8px; }
+  .stage { border:1px solid #e8edf2; border-radius:9px; padding:9px 12px; background:#fafcff; }
+  .stage.final { background:#ecfdf5; border-color:#6ee7b7; }
+  .stage .sh { display:flex; justify-content:space-between; align-items:baseline; margin-bottom:5px; }
+  .stage .snum { font-size:9px; font-weight:800; color:#fff; background:#0e7490; padding:1px 7px; border-radius:8px; letter-spacing:.5px; }
+  .stage.final .snum { background:#059669; }
+  .stage .sdoc { font-size:11px; font-weight:700; color:#0f172a; }
+  .stage .sdept { font-size:9.5px; color:#64748b; }
+  .stage .times { display:flex; gap:8px; }
+  .stage .tcell { flex:1; }
+  .stage .tcell .tl2 { font-size:8.5px; color:#64748b; text-transform:uppercase; letter-spacing:.4px; }
+  .stage .tcell .tv { font-size:10.5px; font-weight:600; color:#0f172a; margin-top:1px; }
+  .stat-row { display:flex; gap:10px; margin-top:10px; }
+  .stat-chip { flex:1; background:#f1f5f9; border-radius:8px; padding:7px 10px; }
+  .stat-chip .l { font-size:8.5px; color:#64748b; text-transform:uppercase; letter-spacing:.4px; }
+  .stat-chip .v { font-size:11px; font-weight:700; color:#0f172a; margin-top:1px; }
+  /* summary badges */
+  .badges { display:flex; gap:10px; }
+  .badge { flex:1; background:#0e7490; color:#fff; border-radius:9px; padding:10px; text-align:center; }
+  .badge .v { font-size:15px; font-weight:800; } .badge .l { font-size:9px; opacity:.9; }
+  .pill { display:inline-block; background:#dcfce7; color:#166534; font-weight:700; font-size:10px; padding:2px 9px; border-radius:10px; }
+  .foot { margin-top:16px; border-top:1px solid #e2e8f0; padding-top:8px; text-align:center; font-size:9px; color:#94a3b8; }
+</style>
+</head>
+<body>
+  <div class="page">
+  <div class="hdr">
+    <div class="sample">SAMPLE</div>
+    <div class="top">
+      <div>
+        <h1>MedSync<span>360</span></h1>
+        <div class="rtitle">Referral Completion Report</div>
+      </div>
+    </div>
+    <div class="meta">Generated: June 23, 2026 · 12:36 PM<br>Confidential — contains patient health information</div>
+  </div>
+
+  <div class="wrap">
+
+    <!-- patient + referral -->
+    <div class="cards2 sec">
+      <div class="card">
+        <div class="ct">Patient Information</div>
+        <div class="row"><span class="k">Patient Name</span><span class="v">Seema</span></div>
+        <div class="row"><span class="k">Age</span><span class="v">43 years</span></div>
+        <div class="row"><span class="k">Sex</span><span class="v">Female</span></div>
+        <div class="row"><span class="k">Room No</span><span class="v">773</span></div>
+        <div class="row"><span class="k">Patient IP No</span><span class="v">773AA</span></div>
+        <div class="row"><span class="k">Admission</span><span class="v">June 19, 2026 · 7:00 PM</span></div>
+      </div>
+      <div class="card">
+        <div class="ct">Referral Details</div>
+        <div class="row"><span class="k">Referral ID</span><span class="v" style="font-size:9px;">d1867b2d…0cbe32</span></div>
+        <div class="row"><span class="k">Chief Complaint</span><span class="v">Headache</span></div>
+        <div class="row"><span class="k">Past History</span><span class="v">Nothing</span></div>
+        <div class="row"><span class="k">General Exam</span><span class="v">All ok</span></div>
+        <div class="row"><span class="k">Urgency</span><span class="v">Normal</span></div>
+        <div class="row"><span class="k">Status</span><span class="v"><span class="pill">Closed</span></span></div>
+      </div>
+    </div>
+
+    <!-- referral path (full chain) -->
+    <div class="sec">
+      <div class="sec-h"><span class="dot"></span>Referral Path · 4 doctors · 3 stages</div>
+      <div class="path">
+        <div class="node origin">
+          <div class="lbl">Origin</div>
+          <div class="dept">MD Anaesthesiology</div>
+          <div class="doc">Dr. Guru Hublikar</div>
+        </div>
+        <div class="ar">&#10142;</div>
+        <div class="node">
+          <div class="lbl">Stage 1</div>
+          <div class="dept">MD Critical Care Medicine</div>
+          <div class="doc">Dr. Medsync360 Prasad</div>
+        </div>
+        <div class="ar">&#10142;</div>
+        <div class="node">
+          <div class="lbl">Stage 2</div>
+          <div class="dept">DM Cardiology</div>
+          <div class="doc">Dr. Karuna Belagavi</div>
+        </div>
+        <div class="ar">&#10142;</div>
+        <div class="node final">
+          <div class="lbl">Final</div>
+          <div class="dept">MD Critical Care Medicine</div>
+          <div class="doc">Dr. Leena Hublikar</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- medication details -->
+    <div class="sec">
+      <div class="sec-h"><span class="dot"></span>Medication Details</div>
+      <div class="mstats">
+        <div class="mstat"><div class="l">Initial Medication</div><div class="v">Vicks actino</div></div>
+        <div class="mstat"><div class="l">Final Medication</div><div class="v">Karun update</div></div>
+        <div class="mstat chg"><div class="l">Medication Changed</div><div class="v">Yes</div></div>
+        <div class="mstat"><div class="l">Journey Steps</div><div class="v">6</div></div>
+      </div>
+    </div>
+
+    <!-- complete medication journey -->
+    <div class="sec">
+      <div class="sec-h"><span class="dot"></span>Complete Medication Journey</div>
+      <div class="tl">
+        <div class="tli created">
+          <div class="mk">1</div>
+          <div class="th"><span class="ttl">Created Referral</span><span class="tm">June 19, 2026 · 11:22 PM</span></div>
+          <div class="meta2">Dr. Guru Hublikar — MD Anaesthesiology</div>
+          <span class="rx">Vicks actino</span>
+          <div class="ctx">Original prescription by Dr. Guru Hublikar</div>
+        </div>
+        <div class="tli updated">
+          <div class="mk">2</div>
+          <div class="th"><span class="ttl">Updated During Transfer</span><span class="tm">June 19, 2026 · 11:25 PM</span></div>
+          <div class="meta2">Dr. Medsync360 Prasad — MD Critical Care Medicine</div>
+          <span class="rx">Step medication updated</span>
+          <div class="ctx">Updated medication during transfer to DM Cardiology</div>
+        </div>
+        <div class="tli received">
+          <div class="mk">3</div>
+          <div class="th"><span class="ttl">Received Transfer</span><span class="tm">June 19, 2026 · 11:25 PM</span></div>
+          <div class="meta2">Dr. Karuna Belagavi — DM Cardiology</div>
+          <span class="rx">Step medication updated</span>
+          <div class="ctx">Received referral transfer from MD Critical Care Medicine</div>
+        </div>
+        <div class="tli updated">
+          <div class="mk">4</div>
+          <div class="th"><span class="ttl">Updated During Transfer</span><span class="tm">June 19, 2026 · 11:46 PM</span></div>
+          <div class="meta2">Dr. Karuna Belagavi — DM Cardiology</div>
+          <span class="rx">Karun update</span>
+          <div class="ctx">Updated medication during transfer to MD Critical Care Medicine</div>
+        </div>
+        <div class="tli received">
+          <div class="mk">5</div>
+          <div class="th"><span class="ttl">Received Transfer</span><span class="tm">June 19, 2026 · 11:46 PM</span></div>
+          <div class="meta2">Dr. Leena Hublikar — MD Critical Care Medicine</div>
+          <span class="rx">Karun update</span>
+          <div class="ctx">Received referral transfer from DM Cardiology</div>
+        </div>
+        <div class="tli completed">
+          <div class="mk">6</div>
+          <div class="th"><span class="ttl">Completed Referral</span><span class="tm">June 19, 2026 · 11:49 PM</span></div>
+          <div class="meta2">Dr. Leena Hublikar — MD Critical Care Medicine</div>
+          <span class="rx">Karun update</span>
+          <div class="ctx">Final medication update by Dr. Leena Hublikar</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- trail summary + completion -->
+    <div class="cards2 sec">
+      <div class="card">
+        <div class="ct">Medication Trail Summary</div>
+        <div class="row"><span class="k">Original Doctor</span><span class="v">Dr. Guru Hublikar</span></div>
+        <div class="row"><span class="k">Original Medication</span><span class="v">Vicks actino</span></div>
+        <div class="row"><span class="k">Final Doctor</span><span class="v">Dr. Leena Hublikar</span></div>
+        <div class="row"><span class="k">Final Medication</span><span class="v">Karun update</span></div>
+        <div class="row"><span class="k">Doctors Involved</span><span class="v">4</span></div>
+        <div class="row"><span class="k">Departments Involved</span><span class="v">3</span></div>
+      </div>
+      <div class="card">
+        <div class="ct">Completion &amp; Attendance</div>
+        <div class="row"><span class="k">Patient Attended</span><span class="v">Yes — seen &amp; treated</span></div>
+        <div class="row"><span class="k">Completed By</span><span class="v">Dr. Leena Hublikar</span></div>
+        <div class="row"><span class="k">Completion Date</span><span class="v">June 19, 2026 · 11:49 PM</span></div>
+        <div class="row"><span class="k">Final Medication</span><span class="v">Karun update</span></div>
+        <div class="row"><span class="k">Attachments</span><span class="v">1 file</span></div>
+      </div>
+    </div>
+
+    <!-- final diagnosis -->
+    <div class="sec">
+      <div class="sec-h"><span class="dot"></span>Final Diagnosis</div>
+      <div class="diag">
+        <div class="cat">Partial Recovery</div>
+        <div class="det">Fit.</div>
+        <div class="by">Diagnosed by Dr. Leena Hublikar · June 19, 2026 · 11:49 PM</div>
+      </div>
+    </div>
+
+    <!-- per-stage timeline -->
+    <div class="sec">
+      <div class="sec-h"><span class="dot"></span>Timeline · Created June 19, 2026 · 11:22 PM (Dr. Guru Hublikar)</div>
+      <div class="stages">
+        <div class="stage">
+          <div class="sh">
+            <div><span class="snum">Stage 1</span> &nbsp;<span class="sdoc">Dr. Medsync360 Prasad</span> <span class="sdept">— MD Critical Care Medicine</span></div>
+          </div>
+          <div class="times">
+            <div class="tcell"><div class="tl2">Received</div><div class="tv">11:22 PM</div></div>
+            <div class="tcell"><div class="tl2">Accepted</div><div class="tv">11:23 PM</div></div>
+            <div class="tcell"><div class="tl2">Transferred</div><div class="tv">11:25 PM</div></div>
+          </div>
+        </div>
+        <div class="stage">
+          <div class="sh">
+            <div><span class="snum">Stage 2</span> &nbsp;<span class="sdoc">Dr. Karuna Belagavi</span> <span class="sdept">— DM Cardiology</span></div>
+          </div>
+          <div class="times">
+            <div class="tcell"><div class="tl2">Received</div><div class="tv">11:25 PM</div></div>
+            <div class="tcell"><div class="tl2">Accepted</div><div class="tv">11:44 PM</div></div>
+            <div class="tcell"><div class="tl2">Transferred</div><div class="tv">11:46 PM</div></div>
+          </div>
+        </div>
+        <div class="stage final">
+          <div class="sh">
+            <div><span class="snum">Stage 3</span> &nbsp;<span class="sdoc">Dr. Leena Hublikar</span> <span class="sdept">— MD Critical Care Medicine</span></div>
+          </div>
+          <div class="times">
+            <div class="tcell"><div class="tl2">Received</div><div class="tv">11:46 PM</div></div>
+            <div class="tcell"><div class="tl2">Accepted</div><div class="tv">11:47 PM</div></div>
+            <div class="tcell"><div class="tl2">Completed</div><div class="tv">11:49 PM</div></div>
+          </div>
+        </div>
+      </div>
+      <div class="stat-row">
+        <div class="stat-chip"><div class="l">Departments Visited</div><div class="v">Anaesthesiology → Critical Care → Cardiology → Critical Care</div></div>
+        <div class="stat-chip"><div class="l">Total Transfers</div><div class="v">3</div></div>
+        <div class="stat-chip"><div class="l">Total Duration</div><div class="v">26m</div></div>
+      </div>
+    </div>
+
+    <!-- summary -->
+    <div class="sec">
+      <div class="sec-h"><span class="dot"></span>Summary</div>
+      <div class="badges">
+        <div class="badge"><div class="v">&#10004;</div><div class="l">Referral Successful</div></div>
+        <div class="badge"><div class="v">&#10004;</div><div class="l">Medication Provided</div></div>
+        <div class="badge"><div class="v">1</div><div class="l">Attachment</div></div>
+      </div>
+    </div>
+
+    <div class="foot">
+      Report generated by MedSync 360 — Healthcare Referral Management System<br>
+      For internal use only · Contains confidential patient information · <b>Sample report created for reference</b>
+    </div>
+  </div>
+  </div>
+</body>
+</html>

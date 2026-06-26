@@ -175,12 +175,18 @@ export const ReferralForm: React.FC<ReferralFormProps> = ({ onSubmit, onCancel }
 
       setLoadingDoctors(true);
       try {
-        const { data, error } = await supabase
+        const hospitalId = (profile as any)?.hospital_id;
+        let doctorsQuery = supabase
           .from('users')
           .select('id, full_name, role, kmc_number')
           .eq('department', formData.department)
-          .eq('is_active', true)
-          .order('full_name', { ascending: true });
+          .eq('is_active', true);
+
+        if (hospitalId) {
+          doctorsQuery = doctorsQuery.eq('hospital_id', hospitalId);
+        }
+
+        const { data, error } = await doctorsQuery.order('full_name', { ascending: true });
 
         if (cancelled) return;
 

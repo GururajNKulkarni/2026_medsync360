@@ -218,10 +218,9 @@ const createReferral = async (referralData: {
               .insert({
                 referral_id: data.id,
                 file_name: fileName,
-                original_file_name: fileName, // We could pass this separately if needed
                 file_type: getFileTypeFromName(fileName),
                 file_url: urlData.publicUrl,
-                uploaded_by: referralData.fromUserId || 'unknown'
+                uploaded_by: referralData.fromUserId || null
               });
 
             if (attachmentError) {
@@ -491,6 +490,40 @@ const fetchTransferHistory = async (referralId: string) => {
   }
 };
 
+// Fetch the full per-stage chain timeline (holder + received/accepted/transferred/
+// ended per hop) for the completion report. Uses the SECURITY DEFINER RPC so a
+// downstream doctor sees upstream stages past RLS. Returns [] on any failure so a
+// report can still be generated with the single-hop fallback.
+export const fetchReferralChainTimeline = async (
+  referralId: string
+): Promise<import('../types/referral.types').ReferralChainTimelineNode[]> => {
+  try {
+    const { data, error } = await (supabase as any).rpc('get_referral_chain_timeline', {
+      p_referral_id: referralId,
+    });
+    if (error) {
+      console.error('Error fetching referral chain timeline:', error);
+      return [];
+    }
+    return ((data as any[]) || []).map((n: any) => ({
+      hopLevel: n.hop_level,
+      referralId: n.referral_id,
+      fromDoctor: n.from_doctor || 'Unknown',
+      fromDepartment: n.from_department || '',
+      toDoctor: n.to_doctor || 'Unknown',
+      toDepartment: n.to_department || '',
+      receivedAt: n.received_at,
+      acceptedAt: n.accepted_at,
+      transferredAt: n.transferred_at,
+      endedAt: n.ended_at,
+      status: n.status,
+    }));
+  } catch (e) {
+    console.error('Error fetching referral chain timeline:', e);
+    return [];
+  }
+};
+
 // Custom hooks for medication history
 export const useMedicationHistory = (referralId: string) => {
   return useQuery({
@@ -701,6 +734,41 @@ export const useReferralAttachments = (referralId: string) => {
     },
     enabled: !!referralId,
     staleTime: 5 * 60 * 1000, // 5 minutes
+  });
+};
+
+// Fetch attachments across the ENTIRE transfer chain (every hop), so a downstream
+// doctor sees files attached upstream — mirrors how the medication journey spans
+// the chain. Backed by the SECURITY DEFINER get_chain_attachments RPC, which
+// bypasses RLS truncation (see migration 20260619120000_get_chain_attachments).
+export const useChainAttachments = (referralId: string) => {
+  return useQuery({
+    queryKey: [...referralKeys.detail(referralId), 'chain-attachments', referralId],
+    queryFn: async () => {
+      const { data, error } = await (supabase as any).rpc('get_chain_attachments', {
+        p_referral_id: referralId,
+      });
+      if (error) {
+        console.error('Error fetching chain attachments:', error.message);
+        throw error;
+      }
+      if (!data || data.length === 0) return [];
+      return await Promise.all((data as any[]).map(async (item: any) => ({
+        id: item.id,
+        fileName: item.file_name,
+        fileType: item.file_type || getFileTypeFromName(item.file_name),
+        fileSize: item.file_size ? formatFileSize(item.file_size) : 'Unknown',
+        fileUrl: await getSignedFileUrl(item.file_name),
+        uploadedBy: item.uploader_name || 'Unknown',
+        createdAt: item.created_at,
+        referralId: item.referral_id,
+        departmentContext: item.referral_department,
+        hopLevel: item.hop_level,
+        isCurrentReferral: item.is_current_referral,
+      })));
+    },
+    enabled: !!referralId,
+    staleTime: 0, // always fresh — clinical evidence must be current
   });
 };
 
